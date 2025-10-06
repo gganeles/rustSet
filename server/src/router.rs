@@ -1,5 +1,5 @@
 use crate::game;
-use game::GameList;
+use game::{set, Game, GameList};
 
 use crate::user::User;
 use futures::{future, SinkExt, StreamExt};
@@ -95,9 +95,11 @@ async fn client_game_connection(
 ) {
     // we validated existence during handshake; additional per-game wiring could go here
     // Find the game and get its broadcast sender
+
     let game_opt = {
         let guard = games.read().await;
         guard
+            .games
             .iter()
             .map(|g| g.get_details())
             .find(|g| g.id == room_id)
@@ -109,7 +111,6 @@ async fn client_game_connection(
     if let Some(game_tx) = game_opt {
         // subscribe to the game's broadcast channel
         let rx = game_tx.subscribe();
-
         // spawn a task that forwards game broadcast messages to this websocket
         let mut send_rx = rx;
         let mut ws_tx_owned = ws_tx;
@@ -129,13 +130,14 @@ async fn client_game_connection(
         while let Some(Ok(message)) = ws_rx.next().await {
             if message.is_text() {
                 let txt = message.to_str().unwrap_or_default().to_string();
-                // broadcast as game_message
-                let msg = Message {
-                    kind: "game_message".into(),
-                    data: txt,
-                };
-                let json = serde_json::to_string(&msg).unwrap();
-                let _ = game_tx.send(json);
+                let mut guard = games.write().await;
+                if let Some(game_mut) = guard
+                    .games
+                    .iter_mut()
+                    .find(|g| g.copy_details().id == room_id)
+                {
+                    game_mut.handle_game_socket_message(txt);
+                }
             }
         }
 
@@ -147,11 +149,11 @@ async fn client_game_connection(
             if message.is_text() {
                 let txt = message.to_str().unwrap_or_default().to_string();
                 let msg = Message {
-                    kind: "game_message".into(),
-                    data: txt,
+                    kind: "game_message_backup".into(),
+                    data: txt.clone(),
                 };
                 let json = serde_json::to_string(&msg).unwrap();
-                if ws_tx.send(warp::ws::Message::text(json)).await.is_err() {
+                if ws_tx.send(warp::ws::Message::text(txt)).await.is_err() {
                     break;
                 }
             }
@@ -209,10 +211,8 @@ async fn client_lobby_connection(
                                     guard.add_game(new_game);
                                 }
                                 // broadcast updated game list (read lock)
-                                let list = {
-                                    let guard = games.read().await;
-                                    guard.list_games()
-                                };
+                                let guard = games.read().await;
+                                let list = guard.list_games();
                                 let msg = Message {
                                     kind: "games_list".into(),
                                     data: serde_json::to_string(&list).unwrap_or_default(),

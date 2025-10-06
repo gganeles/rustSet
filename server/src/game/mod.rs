@@ -21,7 +21,7 @@ impl GameList {
     }
 
     pub fn list_games(&self) -> Vec<GameState> {
-        self.games.iter().map(|g| g.get_details()).collect()
+        self.games.iter().map(|g| g.copy_details()).collect()
     }
 
     pub fn remove_game(&mut self, index: usize) {
@@ -42,9 +42,9 @@ impl GameList {
 // Make the Game trait public and require Send + Sync so trait objects
 // can be safely sent across threads (needed by tokio::spawn / warp).
 pub trait Game: Send + Sync {
-    fn start(&self);
-    fn end(&self);
-    fn get_details(&self) -> GameState;
+    fn copy_details(&self) -> GameState;
+    fn get_details(&self) -> &GameState;
+    fn handle_game_socket_message(&mut self, txt: String);
 }
 
 #[derive(Clone, Serialize, Debug)]

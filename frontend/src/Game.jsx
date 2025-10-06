@@ -1,4 +1,5 @@
 import { onCleanup, createSignal } from 'solid-js'
+import SetBoard from './SetBoard'
 
 export default function Game(props) {
   const [messages, setMessages] = createSignal([])
@@ -58,6 +59,8 @@ export default function Game(props) {
         <input class="flex-1 px-3 py-2 border rounded" value={input()} onInput={(e) => setInput(e.target.value)} placeholder="Type a message and press Enter" />
         <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send</button>
       </form>
+
+      <SetBoard socket={socket} />
     </div>
   )
 }

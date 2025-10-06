@@ -7,6 +7,9 @@ export default function Lobby(props) {
   const [name, setName] = createSignal('')
   const [creator, setCreator] = createSignal('')
   const [showNameModal, setShowNameModal] = createSignal(true)
+  const [nameError, setNameError] = createSignal('')
+  const [gameError, setGameError] = createSignal('')
+  const [infoMessage, setInfoMessage] = createSignal('')
   let socket = null
 
   function handleMessage(e) {
@@ -52,10 +55,19 @@ export default function Lobby(props) {
 
   function createGame(e) {
     e && e.preventDefault()
+    if (!creator() || creator().trim() === '') {
+      setNameError('Please set your name first')
+      return
+    }
+    if (!name() || name().trim() === '') {
+      setGameError('Please enter a game name')
+      return
+    }
     if (!socket || socket.readyState !== WebSocket.OPEN) return
     const payload = { name: name(), creator: creator() }
     socket.send(JSON.stringify({ kind: 'create_game', data: JSON.stringify(payload) }))
     setName('')
+    setGameError('')
   }
 
   function handleSaveName(val) {
@@ -64,6 +76,9 @@ export default function Lobby(props) {
     try { localStorage.setItem('rs_name', v) } catch (e) { }
     setCreator(v)
     setShowNameModal(false)
+    setNameError('')
+    setInfoMessage('Name saved')
+    setTimeout(() => setInfoMessage(''), 3000)
   }
 
   function joinGame(id) {
@@ -77,16 +92,39 @@ export default function Lobby(props) {
     props.onJoin(id)
   }
 
+  function changeName(e) {
+    e && e.preventDefault()
+    const v = creator().trim()
+    if (!v) {
+      setNameError('Please enter a name')
+      return
+    }
+    handleSaveName(creator())
+  }
+
   return (
     <div>
       {showNameModal() && (
         <NameModal prefill={creator()} onSave={handleSaveName} />
       )}
 
-      <form onSubmit={createGame} class="flex flex-wrap items-center gap-2 mb-6">
+      <form onSubmit={changeName} class="flex flex-wrap items-center gap-2 mb-6">
         <input class="px-3 py-2 border rounded w-48" placeholder="your name" value={creator()} onInput={(e) => setCreator(e.target.value)} />
+        <button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Change Name</button>
+        <div>
+          {nameError() && <span class="text-red-600">{nameError()}</span>}
+        </div>
+        <div>
+          {infoMessage() && <span class="text-green-600">{infoMessage()}</span>}
+        </div>
+      </form>
+
+      <form onSubmit={createGame} class="flex flex-wrap items-center gap-2 mb-6">
         <input class="px-3 py-2 border rounded flex-1 min-w-[160px]" placeholder="game name" value={name()} onInput={(e) => setName(e.target.value)} />
         <button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Create Game</button>
+        <div>
+          {gameError() && <span class="text-red-600">{gameError()}</span>}
+        </div>
       </form>
 
       <h2 class="text-lg font-medium mb-2">Available games</h2>

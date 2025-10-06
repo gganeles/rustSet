@@ -1,11 +1,8 @@
-use crate::{
-    game::{set, GameState},
-    user::User,
-};
+use crate::{game::GameState, user::User};
 use std::sync::Arc;
 
 use super::Uuid;
-use rand::seq::SliceRandom;
+use rand::{rand_core::le, seq::SliceRandom};
 use serde::{Deserialize, Serialize};
 
 use crate::router::Message;
@@ -47,6 +44,25 @@ fn deal_cards() -> (Vec<Card>, Vec<Card>) {
     (cards.split_off(12), cards)
 }
 
+fn check_set(cards: &[Card; 3]) -> bool {
+    let cards_json = serde_json::to_value(&cards).unwrap();
+    for field in cards_json[0].as_object().unwrap().keys() {
+        let values: Vec<u8> = cards_json
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|card| card.get(field).unwrap().as_u64().unwrap() as u8)
+            .collect();
+        let all_same = values[0] == values[1] && values[1] == values[2];
+        let all_different =
+            values[0] != values[1] && values[0] != values[2] && values[1] != values[2];
+        if !(all_same || all_different) {
+            return false;
+        }
+    }
+    return true;
+}
+
 impl Set {
     pub fn new(name: String, creator: User) -> Self {
         let (board, deck) = deal_cards();
@@ -64,25 +80,6 @@ impl Set {
         }
     }
 
-    fn check_set(cards: &[Card; 3]) -> bool {
-        let cards_json = serde_json::to_value(&cards).unwrap();
-        for field in cards_json[0].as_object().unwrap().keys() {
-            let values: Vec<u8> = cards_json
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|card| card.get(field).unwrap().as_u64().unwrap() as u8)
-                .collect();
-            let all_same = values[0] == values[1] && values[1] == values[2];
-            let all_different =
-                values[0] != values[1] && values[0] != values[2] && values[1] != values[2];
-            if !(all_same || all_different) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     fn is_set_out(&self) -> bool {
         for i in 0..(self.board.len() - 2) {
             for j in (i + 1)..(self.board.len() - 1) {
@@ -92,7 +89,7 @@ impl Set {
                         self.board[j].clone(),
                         self.board[k].clone(),
                     ];
-                    if Self::check_set(&cards) {
+                    if check_set(&cards) {
                         return true;
                     }
                 }
@@ -124,7 +121,7 @@ impl Set {
     pub fn set_attempted(&mut self, found_set: [u8; 3]) {
         // Logic to handle a found set
         let set_cards = &found_set.map(|i| self.board[i as usize].clone());
-        if Self::check_set(set_cards) {
+        if check_set(set_cards) {
             self.set_found(found_set, set_cards);
         } else {
             return;
@@ -138,19 +135,63 @@ impl Set {
 }
 
 impl super::Game for Set {
-    fn start(&self) {
-        // Logic to start the game
-        let msg = format!("Game {} started", self.game_state.name);
-        let _ = self.game_state.broadcast_tx.send(msg);
-    }
-
-    fn end(&self) {
-        // Logic to end the game
-        let msg = format!("Game {} ended", self.game_state.name);
-        let _ = self.game_state.broadcast_tx.send(msg);
-    }
-
-    fn get_details(&self) -> GameState {
+    fn copy_details(&self) -> GameState {
         self.game_state.clone()
+    }
+
+    fn get_details(&self) -> &GameState {
+        &self.game_state
+    }
+
+    fn handle_game_socket_message(&mut self, txt: String) {
+        let json_in = serde_json::from_str::<serde_json::Value>(&txt);
+        println!("Parsed JSON: {:?}", json_in);
+        if let Ok(parsed) = json_in {
+            let kind = parsed
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            match kind {
+                "chat" => {
+                    let data = parsed
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let msg = Message {
+                        kind: "chat".into(),
+                        data: data.to_string(),
+                    };
+                    let json = serde_json::to_string(&msg).unwrap();
+                    let _ = self.game_state.broadcast_tx.send(json);
+                }
+                "set_attempt" => {
+                    let data = parsed.get("data");
+                    if let Some(data) = data {
+                        let found_set = data;
+                        println!("Found set data: {:?}", found_set);
+                        self.set_attempted(
+                            found_set
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|v| v.as_u64().unwrap() as u8)
+                                .collect::<Vec<u8>>()
+                                .try_into()
+                                .unwrap(),
+                        );
+                    }
+                }
+                _ => {
+                    let msg = Message {
+                        kind: "error".into(),
+                        data: "Unknown message kind".into(),
+                    };
+                    let json = serde_json::to_string(&msg).unwrap();
+                    let _ = self.game_state.broadcast_tx.send(json);
+                }
+            }
+            println!("Received message: {:?}", txt);
+            // Placeholder logic
+        }
     }
 }
