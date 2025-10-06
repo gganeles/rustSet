@@ -1,6 +1,5 @@
-mod router;
 mod game;
-mod player;
+mod router;
 mod user;
 
 #[tokio::main]

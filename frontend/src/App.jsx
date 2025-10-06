@@ -1,10 +1,10 @@
 import { createSignal, onMount } from 'solid-js'
 import Lobby from './Lobby'
 import Game from './Game'
+import { navigate } from './utils/test.js'
 
 export default function App() {
   const [route, setRoute] = createSignal({ name: 'lobby' })
-
   function parseRoute(path) {
     if (!path || path === '/' || path === '') return { name: 'lobby' }
     const parts = path.split('/').filter(Boolean)
@@ -12,10 +12,6 @@ export default function App() {
     return { name: 'lobby' }
   }
 
-  function navigate(to) {
-    window.history.pushState({}, '', to)
-    setRoute(parseRoute(window.location.pathname))
-  }
 
   onMount(() => {
     setRoute(parseRoute(window.location.pathname))
@@ -27,13 +23,19 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: '1rem', 'font-family': 'sans-serif' }}>
-      <h1>SolidJS Game Lobby</h1>
+    <div class="rs-container font-sans">
+      <header class="mb-6">
+        <h1 class="text-2xl font-semibold text-gray-800">RustSet — Game Lobby</h1>
+      </header>
+
       {route().name === 'lobby' && <Lobby onJoin={handleJoin} />}
-      {route().name === 'game' && <div>
-        <button onClick={() => navigate('/')}>Back to Lobby</button>
-        <Game id={route().id} />
-      </div>}
+
+      {route().name === 'game' && (
+        <div>
+          <button class="mb-4 inline-block px-3 py-1 bg-gray-200 rounded hover:bg-gray-300" onClick={() => navigate('/')}>Back to Lobby</button>
+          <Game id={route().id} />
+        </div>
+      )}
     </div>
   )
 }

@@ -15,7 +15,7 @@ export default function Game(props) {
 
   function connect(id) {
     if (socket) {
-      try { socket.close() } catch (e) {}
+      try { socket.close() } catch (e) { }
     }
     socket = new WebSocket(`ws://127.0.0.1:3030/game/ws/${id}`)
     socket.addEventListener('message', handleMessage)
@@ -28,7 +28,7 @@ export default function Game(props) {
 
   onCleanup(() => {
     if (socket) {
-      try { socket.close() } catch (e) {}
+      try { socket.close() } catch (e) { }
     }
   })
 
@@ -45,16 +45,18 @@ export default function Game(props) {
   }
 
   return (
-    <div>
-      <h2>Game {props.id}</h2>
-      <ul>
+    <div class="space-y-4">
+      <h2 class="text-xl font-semibold">Game {props.id}</h2>
+
+      <ul class="space-y-1 max-h-64 overflow-auto p-2 border rounded bg-white">
         {messages().map((m, i) => (
-          <li key={i}>{m}</li>
+          <li key={i} class="text-sm text-gray-800">{m}</li>
         ))}
       </ul>
-      <form onSubmit={sendChat}>
-        <input value={input()} onInput={(e) => setInput(e.target.value)} placeholder="Type a message and press Enter" />
-        <button type="submit">Send</button>
+
+      <form onSubmit={sendChat} class="flex gap-2">
+        <input class="flex-1 px-3 py-2 border rounded" value={input()} onInput={(e) => setInput(e.target.value)} placeholder="Type a message and press Enter" />
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Send</button>
       </form>
     </div>
   )

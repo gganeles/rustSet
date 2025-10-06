@@ -1,22 +1,25 @@
 use crate::game;
-use crate::game::GameList;
+use game::GameList;
 
+use crate::user::User;
 use futures::{future, SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::broadcast::{self, Sender};
+use tokio::sync::RwLock;
+use uuid::Uuid;
 use warp::Filter;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Message {
-    kind: String,
-    data: String,
+pub struct Message {
+    pub kind: String,
+    pub data: String,
 }
 
 pub fn setup_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     // create shared games list wrapped in Arc so filters/handlers can share it
-    let games = Arc::new(game::GameList::new());
+    let games = Arc::new(RwLock::new(game::GameList::new()));
 
     // broadcast channel for lobby server -> clients
     let (tx, _) = broadcast::channel::<String>(64);
@@ -24,10 +27,8 @@ pub fn setup_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::R
 
     // WebSocket route
     // clone a handle specifically for the warp filter so we can still use `tx` later
-    let tx_filter = {
-        warp::any().map(move || tx.clone())
-    };
-    
+    let tx_filter = { warp::any().map(move || tx.clone()) };
+
     // create two filters for games (one for lobby, one for game ws)
     let games_for_lobby = games.clone();
     let games_filter_for_lobby = warp::any().map(move || games_for_lobby.clone());
@@ -50,7 +51,7 @@ pub fn setup_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::R
 async fn handle_lobby_ws(
     ws: warp::ws::Ws,
     tx: Arc<Sender<String>>,
-    games: Arc<GameList>,
+    games: Arc<RwLock<GameList>>,
 ) -> Result<impl warp::Reply, Infallible> {
     Ok(ws.on_upgrade(move |socket| client_lobby_connection(socket, tx, games)))
 }
@@ -58,16 +59,18 @@ async fn handle_lobby_ws(
 async fn handle_game_ws(
     room_id: String,
     ws: warp::ws::Ws,
-    games: Arc<GameList>,
+    games: Arc<RwLock<GameList>>,
 ) -> Result<Box<dyn warp::Reply>, Infallible> {
     // validate before upgrade so we can return a 404 instead of upgrading then returning nothing
-    let guard = games.games.lock().await;
-    if guard.is_empty() {
+    let guard = games.read().await;
+    // GameList doesn't expose `is_empty()`; check via iterator
+    if guard.iter().next().is_none() {
         return Ok(Box::new(warp::reply::with_status(
             "No games available",
             warp::http::StatusCode::NOT_FOUND,
         )));
     }
+    let room_id = Uuid::parse_str(room_id.trim()).unwrap();
     let exists = guard.iter().any(|g| g.get_details().id == room_id);
     if !exists {
         return Ok(Box::new(warp::reply::with_status(
@@ -85,27 +88,38 @@ async fn handle_game_ws(
     })))
 }
 
-
-async fn client_game_connection(_room_id: String, ws: warp::ws::WebSocket, _games: Arc<GameList>) {
+async fn client_game_connection(
+    room_id: Uuid,
+    ws: warp::ws::WebSocket,
+    games: Arc<RwLock<GameList>>,
+) {
     // we validated existence during handshake; additional per-game wiring could go here
     // Find the game and get its broadcast sender
     let game_opt = {
-        let guard = _games.games.lock().await;
-        guard.iter().find(|g| g.get_details().id == _room_id).map(|g| g.game_tx())
+        let guard = games.read().await;
+        guard
+            .iter()
+            .map(|g| g.get_details())
+            .find(|g| g.id == room_id)
+            .map(|g| g.broadcast_tx.clone())
     };
 
     let (mut ws_tx, mut ws_rx) = ws.split();
 
     if let Some(game_tx) = game_opt {
         // subscribe to the game's broadcast channel
-        let mut rx = game_tx.subscribe();
+        let rx = game_tx.subscribe();
 
         // spawn a task that forwards game broadcast messages to this websocket
         let mut send_rx = rx;
         let mut ws_tx_owned = ws_tx;
         let send_handle = tokio::spawn(async move {
             while let Ok(msg) = send_rx.recv().await {
-                if ws_tx_owned.send(warp::ws::Message::text(msg)).await.is_err() {
+                if ws_tx_owned
+                    .send(warp::ws::Message::text(msg))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -116,7 +130,10 @@ async fn client_game_connection(_room_id: String, ws: warp::ws::WebSocket, _game
             if message.is_text() {
                 let txt = message.to_str().unwrap_or_default().to_string();
                 // broadcast as game_message
-                let msg = Message { kind: "game_message".into(), data: txt };
+                let msg = Message {
+                    kind: "game_message".into(),
+                    data: txt,
+                };
                 let json = serde_json::to_string(&msg).unwrap();
                 let _ = game_tx.send(json);
             }
@@ -129,7 +146,10 @@ async fn client_game_connection(_room_id: String, ws: warp::ws::WebSocket, _game
         while let Some(Ok(message)) = ws_rx.next().await {
             if message.is_text() {
                 let txt = message.to_str().unwrap_or_default().to_string();
-                let msg = Message { kind: "game_message".into(), data: txt };
+                let msg = Message {
+                    kind: "game_message".into(),
+                    data: txt,
+                };
                 let json = serde_json::to_string(&msg).unwrap();
                 if ws_tx.send(warp::ws::Message::text(json)).await.is_err() {
                     break;
@@ -137,11 +157,13 @@ async fn client_game_connection(_room_id: String, ws: warp::ws::WebSocket, _game
             }
         }
     }
-
-
 }
 
-async fn client_lobby_connection(ws: warp::ws::WebSocket, tx: Arc<Sender<String>>, games: Arc<GameList>) {
+async fn client_lobby_connection(
+    ws: warp::ws::WebSocket,
+    tx: Arc<Sender<String>>,
+    games: Arc<RwLock<GameList>>,
+) {
     let (mut ws_tx, mut ws_rx) = ws.split();
 
     // Subscribe to broadcast channel
@@ -175,12 +197,22 @@ async fn client_lobby_connection(ws: warp::ws::WebSocket, tx: Arc<Sender<String>
                                 name: String,
                                 creator: String,
                             }
-                            if let Ok(payload) = serde_json::from_str::<CreatePayload>(&parsed.data) {
-                                // create game and add to list
-                                let new_game = game::new_set(payload.name, payload.creator);
-                                let _ = games.add_game(new_game).await;
-                                // broadcast updated game list
-                                let list = games.list_games().await;
+
+                            if let Ok(payload) = serde_json::from_str::<CreatePayload>(&parsed.data)
+                            {
+                                // create game and add to list (write lock)
+                                let creator = User::new(payload.creator);
+
+                                let new_game = Box::new(game::set::Set::new(payload.name, creator));
+                                {
+                                    let mut guard = games.write().await;
+                                    guard.add_game(new_game);
+                                }
+                                // broadcast updated game list (read lock)
+                                let list = {
+                                    let guard = games.read().await;
+                                    guard.list_games()
+                                };
                                 let msg = Message {
                                     kind: "games_list".into(),
                                     data: serde_json::to_string(&list).unwrap_or_default(),
@@ -190,28 +222,47 @@ async fn client_lobby_connection(ws: warp::ws::WebSocket, tx: Arc<Sender<String>
                             }
                         }
                         "list_games" => {
-                            let list = games.list_games().await;
-                            let msg = Message { kind: "games_list".into(), data: serde_json::to_string(&list).unwrap_or_default() };
+                            let list = {
+                                let guard = games.read().await;
+                                guard.list_games()
+                            };
+                            let msg = Message {
+                                kind: "games_list".into(),
+                                data: serde_json::to_string(&list).unwrap_or_default(),
+                            };
                             let json = serde_json::to_string(&msg).unwrap();
                             let _ = tx2.send(json);
                         }
                         "join_game" | "leave_game" => {
                             // For now, broadcast a notification. Game-level state updates are not implemented.
-                            let kind = if parsed.kind == "join_game" { "player_joined" } else { "player_left" };
-                            let msg = Message { kind: kind.into(), data: parsed.data };
+                            let kind = if parsed.kind == "join_game" {
+                                "player_joined"
+                            } else {
+                                "player_left"
+                            };
+                            let msg = Message {
+                                kind: kind.into(),
+                                data: parsed.data,
+                            };
                             let json = serde_json::to_string(&msg).unwrap();
                             let _ = tx2.send(json);
                         }
                         _ => {
                             // default: broadcast as chat/message
-                            let msg = Message { kind: "message".into(), data: txt };
+                            let msg = Message {
+                                kind: "message".into(),
+                                data: txt,
+                            };
                             let json = serde_json::to_string(&msg).unwrap();
                             let _ = tx2.send(json);
                         }
                     }
                 } else {
                     // Not a structured Message - broadcast raw text as message
-                    let msg = Message { kind: "message".into(), data: txt };
+                    let msg = Message {
+                        kind: "message".into(),
+                        data: txt,
+                    };
                     let json = serde_json::to_string(&msg).unwrap();
                     let _ = tx2.send(json);
                 }

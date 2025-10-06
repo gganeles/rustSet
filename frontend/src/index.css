@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Small custom utilities */
+.rs-container {
+    /* Avoid using @apply to prevent build-time "unknown utility" errors in some setups.
+     Use equivalent plain CSS here. */
+    max-width: 64rem;
+    /* approx Tailwind's max-w-4xl */
+    margin-left: auto;
+    margin-right: auto;
+    padding: 1.5rem;
+    /* approx p-6 */
+}
