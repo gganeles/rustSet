@@ -7,12 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::router::Message;
 
+use tokio::sync::broadcast;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Card {
-    color: u8,
-    shape: u8,
-    number: u8,
-    shading: u8,
+    pub array: [u8; 4],
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -31,10 +30,7 @@ fn deal_cards() -> (Vec<Card>, Vec<Card>) {
             for k in 0..3 {
                 for l in 0..3 {
                     cards.push(Card {
-                        color: i,
-                        shape: j,
-                        number: k,
-                        shading: l,
+                        array: [i, j, k, l],
                     });
                 }
             }
@@ -44,19 +40,19 @@ fn deal_cards() -> (Vec<Card>, Vec<Card>) {
     (cards.split_off(12), cards)
 }
 
+fn check_attribute(cards: &[u8; 3], field: usize) -> bool {
+    let sum: u8 = cards.iter().sum();
+    sum % 3 == 0
+}
+
 fn check_set(cards: &[Card; 3]) -> bool {
-    let cards_json = serde_json::to_value(&cards).unwrap();
-    for field in cards_json[0].as_object().unwrap().keys() {
-        let values: Vec<u8> = cards_json
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|card| card.get(field).unwrap().as_u64().unwrap() as u8)
-            .collect();
-        let all_same = values[0] == values[1] && values[1] == values[2];
-        let all_different =
-            values[0] != values[1] && values[0] != values[2] && values[1] != values[2];
-        if !(all_same || all_different) {
+    for field in 0..4 {
+        let attrs = [
+            cards[0].array[field],
+            cards[1].array[field],
+            cards[2].array[field],
+        ];
+        if !check_attribute(&attrs, field) {
             return false;
         }
     }
@@ -65,7 +61,8 @@ fn check_set(cards: &[Card; 3]) -> bool {
 
 impl Set {
     pub fn new(name: String, creator: User) -> Self {
-        let (board, deck) = deal_cards();
+        let (deck, board) = deal_cards();
+        println!("Dealt board: {:?}, deck size: {}", board, deck.len());
         Self {
             game_state: super::GameState {
                 id: Uuid::new_v4(),
@@ -126,15 +123,19 @@ impl Set {
         } else {
             return;
         }
-
-        // Remove the found set from the board and deal new cards if necessary
-        // Placeholder logic
-
-        if self.board.len() < 12 && !self.deck.is_empty() {}
     }
 }
 
 impl super::Game for Set {
+    fn send_state_to_client(&self, broadcast_tx: &broadcast::Sender<String>, kind: String) {
+        let msg = Message {
+            kind,
+            data: serde_json::to_string(&self).unwrap(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let _ = broadcast_tx.send(json);
+    }
+
     fn copy_details(&self) -> GameState {
         self.game_state.clone()
     }

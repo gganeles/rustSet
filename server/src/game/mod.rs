@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::sync::Arc;
-use tokio;
+use tokio::{self, sync::broadcast};
 use uuid::Uuid;
 
 pub mod player;
@@ -42,6 +42,11 @@ impl GameList {
 // Make the Game trait public and require Send + Sync so trait objects
 // can be safely sent across threads (needed by tokio::spawn / warp).
 pub trait Game: Send + Sync {
+    fn send_state_to_client(
+        &self,
+        broadcast_tx: &tokio::sync::broadcast::Sender<String>,
+        kind: String,
+    );
     fn copy_details(&self) -> GameState;
     fn get_details(&self) -> &GameState;
     fn handle_game_socket_message(&mut self, txt: String);

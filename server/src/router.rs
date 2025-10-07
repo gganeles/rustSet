@@ -125,6 +125,13 @@ async fn client_game_connection(
                 }
             }
         });
+        // emit game state to client immediately on connection
+        {
+            let guard = games.read().await;
+            if let Some(game) = guard.games.iter().find(|g| g.copy_details().id == room_id) {
+                game.send_state_to_client(&game_tx, "init".into());
+            }
+        }
 
         // read messages from websocket and forward them into the game's broadcast channel
         while let Some(Ok(message)) = ws_rx.next().await {
