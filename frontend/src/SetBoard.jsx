@@ -2,9 +2,27 @@ import { For, createSignal, onMount } from 'solid-js'
 
 export default function SetBoard(props) {
     const socket = props.socket || null
+    const onGameStateUpdate = props.onGameStateUpdate || (() => { })
     const [selectedCards, setSelectedCards] = createSignal([])
     const [cards, setCards] = createSignal([])
     const [gameState, setGameState] = createSignal(null)
+
+    // Map card array values to attribute names
+    const getCardImageUrl = (cardArray) => {
+        // cardArray is [shape, filling, color, number]
+        // Each value is 0, 1, or 2
+        const shapes = ['oval', 'squiggle', 'diamond']
+        const fillings = ['filled', 'lines', 'clear']
+        const colors = ['red', 'green', 'purple']
+        const numbers = ['1', '2', '3']
+
+        const shape = shapes[cardArray[0]]
+        const filling = fillings[cardArray[1]]
+        const color = colors[cardArray[2]]
+        const number = numbers[cardArray[3]]
+
+        return `https://set.gganeles.com/RegCards/${shape}_${filling}_${color}_${number}.png`
+    }
 
     // Function to render the new board from game data
     const renderBoard = (gameData) => {
@@ -26,6 +44,9 @@ export default function SetBoard(props) {
 
         // Update game state
         setGameState(gameData)
+
+        // Notify parent component of game state update
+        onGameStateUpdate(gameData)
     }
 
     // Handle incoming messages from the server
@@ -113,47 +134,47 @@ export default function SetBoard(props) {
     }
 
     return (
-        <div>
-            {/* Scoreboard */}
-            {gameState() && gameState().game_state && gameState().game_state.players && (
-                <div class="mb-4 bg-white rounded-lg shadow-md p-4">
-                    <h3 class="text-lg font-semibold mb-3 text-gray-700">Scoreboard</h3>
-                    <div class="space-y-2">
-                        <For each={gameState().game_state.players}>
-                            {(player) => (
-                                <div class="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors">
-                                    <span class="font-medium text-gray-800">{player.name}</span>
-                                    <span class="text-lg font-bold text-blue-600">{player.score}</span>
-                                </div>
-                            )}
-                        </For>
-                    </div>
-                </div>
-            )}
-
-            {/* Game Board */}
+        <div class="h-full flex flex-col p-4">
+            {/* Game Board - Always visible with responsive grid */}
             {cards().length === 0 ? (
                 <div class="text-center py-8 text-gray-500">
                     Loading game board...
                 </div>
             ) : (
-                <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                    <For each={cards()}>{(card, idx) => (
-                        <div
-                            class={`p-3 border-2 rounded shadow-sm flex flex-col items-center justify-center min-h-[92px] cursor-pointer transition-all ${selectedCards().includes(idx())
-                                ? 'bg-blue-200 border-blue-500'
-                                : 'bg-white hover:bg-gray-50 border-gray-200'
-                                }`}
-                            onClick={() => handleCardClick(idx())}
-                        >
-                            <div class="text-sm text-gray-600 mb-1">Card {idx() + 1}</div>
-                            <ul class="space-y-0.5 text-sm text-gray-800">
-                                {card.map((n, i) => (
-                                    <li key={i} class="text-center">{n}</li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}</For>
+                <div class="flex-1 min-h-0 overflow-auto">
+                    <div class="grid grid-cols-3 md:grid-cols-4 gap-1 sm:gap-2 p-2">
+                        <For each={cards()}>{(card, idx) => (
+                            <div
+                                class={`border-2 h-[20vh] md:h-[25vh] rounded-[20px] shadow-sm flex items-center justify-center cursor-pointer transition-all w-full ${selectedCards().includes(idx())
+                                    ? 'bg-blue-200 border-blue-500'
+                                    : 'bg-white hover:bg-gray-50 border-gray-200'
+                                    }`}
+                                // style={{
+                                //     height: '',
+                                // }}
+                                onClick={() => handleCardClick(idx())}
+                            >
+                                <img
+                                    src={getCardImageUrl(card)}
+                                    alt={`Card ${idx() + 1}`}
+                                    class="w-[15vw] max-w-[110px] h-auto object-contain p-1"
+                                    onError={(e) => {
+                                        // Fallback if image fails to load
+                                        e.target.style.display = 'none'
+                                        e.target.nextElementSibling.style.display = 'block'
+                                    }}
+                                />
+                                <div class="hidden text-xs text-gray-500">
+                                    <div>Card {idx() + 1}</div>
+                                    <ul class="space-y-0 text-sm text-gray-800">
+                                        {card.map((n, i) => (
+                                            <li key={i} class="text-center leading-tight">{n}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        )}</For>
+                    </div>
                 </div>
             )}
         </div>

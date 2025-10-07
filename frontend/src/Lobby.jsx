@@ -92,6 +92,12 @@ export default function Lobby(props) {
     props.onJoin(id)
   }
 
+  function deleteGame(id) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    const payload = { id }
+    socket.send(JSON.stringify({ kind: 'delete_game', data: JSON.stringify(payload) }))
+  }
+
   function changeName(e) {
     e && e.preventDefault()
     const v = creator().trim()
@@ -132,8 +138,9 @@ export default function Lobby(props) {
         {games().length === 0 ? <li class="text-gray-600">No games</li> : games().map((g, i) => (
           <li key={i} class="flex items-center justify-between gap-4 p-3 border rounded">
             <div class="text-gray-800">{g.name} <span class="text-sm text-gray-500">— by {g.creator} ({g.players_online} players)</span></div>
-            <div>
+            <div class="flex gap-2">
               <button class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700" onClick={() => joinGame(g.id)}>Join</button>
+              <button class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700" onClick={() => deleteGame(g.id)}>Delete</button>
             </div>
           </li>
         ))}

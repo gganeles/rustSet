@@ -23,19 +23,10 @@ export default function App() {
   }
 
   return (
-    <div class="rs-container font-sans">
-      <header class="mb-6">
-        <h1 class="text-2xl font-semibold text-gray-800">RustSet — Game Lobby</h1>
-      </header>
-
+    <div class="max-w-[84rem] mx-auto p-[1.5rem] h-screen font-sans">
       {route().name === 'lobby' && <Lobby onJoin={handleJoin} />}
 
-      {route().name === 'game' && (
-        <div>
-          <button class="mb-4 inline-block px-3 py-1 bg-gray-200 rounded hover:bg-gray-300" onClick={() => navigate('/')}>Back to Lobby</button>
-          <Game id={route().id} />
-        </div>
-      )}
+      {route().name === 'game' && <Game id={route().id} />}
     </div>
   )
 }

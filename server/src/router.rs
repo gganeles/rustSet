@@ -240,6 +240,39 @@ async fn client_lobby_connection(
                             let json = serde_json::to_string(&msg).unwrap();
                             let _ = tx2.send(json);
                         }
+                        "delete_game" => {
+                            // data should be a JSON object with game id
+                            #[derive(serde::Deserialize)]
+                            struct DeletePayload {
+                                id: String,
+                            }
+
+                            if let Ok(payload) = serde_json::from_str::<DeletePayload>(&parsed.data)
+                            {
+                                if let Ok(game_id) = Uuid::parse_str(&payload.id) {
+                                    // Find and remove the game
+                                    {
+                                        let mut guard = games.write().await;
+                                        if let Some(pos) = guard
+                                            .games
+                                            .iter()
+                                            .position(|g| g.get_details().id == game_id)
+                                        {
+                                            guard.remove_game(pos);
+                                        }
+                                    }
+                                    // Broadcast updated game list
+                                    let guard = games.read().await;
+                                    let list = guard.list_games();
+                                    let msg = Message {
+                                        kind: "games_list".into(),
+                                        data: serde_json::to_string(&list).unwrap_or_default(),
+                                    };
+                                    let json = serde_json::to_string(&msg).unwrap();
+                                    let _ = tx2.send(json);
+                                }
+                            }
+                        }
                         "join_game" | "leave_game" => {
                             // For now, broadcast a notification. Game-level state updates are not implemented.
                             let kind = if parsed.kind == "join_game" {
