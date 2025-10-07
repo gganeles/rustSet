@@ -105,45 +105,45 @@ export default function Game(props) {
         class={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl border-l transform transition-transform duration-300 flex flex-col z-50 ${isChatOpen() ? 'translate-x-0' : 'translate-x-full'
           }`}
       >
-          {/* Chat header */}
-          <div class="flex items-center justify-between p-4 border-b bg-gray-50">
-            <h3 class="font-semibold text-lg">Chat</h3>
-            <button
-              onClick={closeChat}
-              class="text-gray-600 hover:text-gray-900 text-xl font-bold leading-none px-2"
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-
-          {/* Messages */}
-          <div class="flex-1 overflow-auto p-4">
-            <ul class="space-y-2">
-              {messages().map((m, i) => (
-                <li key={i} class="text-sm text-gray-800 p-2 bg-gray-50 rounded">{m}</li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Chat input */}
-          <div class="p-4 border-t bg-white">
-            <form onSubmit={sendChat} class="flex flex-col gap-2">
-              <input
-                class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={input()}
-                onInput={(e) => setInput(e.target.value)}
-                placeholder="Type a message..."
-              />
-              <button
-                type="submit"
-                class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Send
-              </button>
-            </form>
-          </div>
+        {/* Chat header */}
+        <div class="flex items-center justify-between p-4 border-b bg-gray-50">
+          <h3 class="font-semibold text-lg">Chat</h3>
+          <button
+            onClick={closeChat}
+            class="text-gray-600 hover:text-gray-900 text-xl font-bold leading-none px-2"
+            type="button"
+          >
+            ×
+          </button>
         </div>
+
+        {/* Messages */}
+        <div class="flex-1 overflow-auto p-4">
+          <ul class="space-y-2">
+            {messages().map((m, i) => (
+              <li key={i} class="text-sm text-gray-800 p-2 bg-gray-50 rounded">{m}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Chat input */}
+        <div class="p-4 border-t bg-white">
+          <form onSubmit={sendChat} class="flex flex-col gap-2">
+            <input
+              class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={input()}
+              onInput={(e) => setInput(e.target.value)}
+              placeholder="Type a message..."
+            />
+            <button
+              type="submit"
+              class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }
