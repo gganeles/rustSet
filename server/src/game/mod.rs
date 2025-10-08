@@ -6,6 +6,13 @@ use uuid::Uuid;
 pub mod player;
 pub mod set;
 
+#[derive(Clone, Serialize, Debug)]
+pub struct ChatMessage {
+    pub sender: String,
+    pub text: String,
+    pub cards: Option<Vec<set::Card>>,
+}
+
 #[derive(Default)]
 pub struct GameList {
     pub games: Vec<Box<dyn Game + Send + Sync>>,
@@ -60,4 +67,5 @@ pub struct GameState {
     pub current_state: String, // Placeholder for actual game state
     #[serde(skip)] // don't attempt to (de)serialize this non-serializable shared state
     pub broadcast_tx: Arc<tokio::sync::broadcast::Sender<String>>,
+    pub chat: Vec<ChatMessage>,
 }

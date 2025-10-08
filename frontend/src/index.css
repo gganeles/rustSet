@@ -15,3 +15,18 @@
     padding: 1.5rem;
     /* approx p-6 */
 }
+
+/* Responsive grid for Set game board */
+/* Mobile: 3 columns (default) */
+/* Desktop: Dynamic columns to maintain 3 rows */
+@media (min-width: 768px) {
+    .set-game-grid {
+        grid-template-columns: repeat(var(--desktop-cols, 4), 1fr) !important;
+    }
+}
+
+@media (max-width: 767px) {
+    .card-container {
+        max-height: calc(100vh / var(--desktop-cols) - 3rem);
+    }
+}

@@ -22,6 +22,25 @@ pub struct Set {
     pub previous_set: Option<Vec<Card>>, // Last found set
 }
 
+#[derive(Serialize)]
+struct SetFoundData {
+    game_state: GameState,
+    deck: Vec<Card>,
+    board: Vec<Card>,
+    previous_set: Option<Vec<Card>>,
+    finder_name: Option<String>,
+    chat: Vec<super::ChatMessage>,
+}
+
+#[derive(Serialize)]
+struct GameStateData {
+    game_state: GameState,
+    deck: Vec<Card>,
+    board: Vec<Card>,
+    previous_set: Option<Vec<Card>>,
+    chat: Vec<super::ChatMessage>,
+}
+
 fn deal_cards() -> (Vec<Card>, Vec<Card>) {
     // Placeholder for dealing cards logic
     let mut cards = Vec::with_capacity(81);
@@ -70,6 +89,7 @@ impl Set {
                 broadcast_tx: Arc::new(tokio::sync::broadcast::channel(64).0),
                 players: vec![super::player::Player::from_user(&creator)],
                 current_state: String::from("in_progress"),
+                chat: Vec::new(),
             },
             deck,
             board,
@@ -95,31 +115,92 @@ impl Set {
         false
     }
 
-    fn set_found(&mut self, set_card_indicies: [u8; 3], set_cards: &[Card; 3]) {
+    fn remove_cards(&mut self, indicies: [u8; 3]) {
+        let mut sorted = indicies;
+        sorted.sort_unstable_by(|a, b| b.cmp(a)); // Sort in descending order
+        for &i in &sorted {
+            self.board.remove(i as usize);
+        }
+    }
+
+    fn set_found(
+        &mut self,
+        set_card_indicies: [u8; 3],
+        set_cards: &[Card; 3],
+        player_id: Option<Uuid>,
+    ) {
         // Logic to handle a found set
         self.previous_set = Some(set_cards.to_vec());
-        for &i in &set_card_indicies {
-            self.board[i as usize] = self.deck.pop().unwrap();
+
+        // Get the player's name who found the set
+        let player_name = if let Some(pid) = player_id {
+            if let Some(player) = self.game_state.players.iter_mut().find(|p| p.id == pid) {
+                player.score += 1;
+                println!(
+                    "Player {} found a set! New score: {}",
+                    player.name, player.score
+                );
+                Some(player.name.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if !self.deck.is_empty() {
+            if self.board.len() > 12 {
+                self.remove_cards(set_card_indicies);
+            } else {
+                for &i in &set_card_indicies {
+                    self.board[i as usize] = self.deck.pop().unwrap();
+                }
+            }
+            while !self.is_set_out() {
+                self.board.extend(self.deck.drain(0..3));
+            }
+        } else {
+            self.remove_cards(set_card_indicies);
+            if !self.is_set_out() {
+                self.game_state.current_state = "game_over".into();
+            }
         }
-        while !self.is_set_out() && self.deck.len() > 0 {
-            self.board.extend(self.deck.drain(0..3));
-        }
-        if !self.is_set_out() {
-            self.game_state.current_state = "game_over".into();
-        }
+
+        // Add system message to chat history with the cards
+        let chat_message_text = if let Some(ref name) = player_name {
+            format!("{} found a Set!", name)
+        } else {
+            "Someone found a Set!".to_string()
+        };
+
+        self.game_state.chat.push(super::ChatMessage {
+            sender: "System".to_string(),
+            text: chat_message_text,
+            cards: Some(self.previous_set.clone().unwrap_or_default()),
+        });
+
+        let set_found_data = SetFoundData {
+            game_state: self.game_state.clone(),
+            deck: self.deck.clone(),
+            board: self.board.clone(),
+            previous_set: self.previous_set.clone(),
+            finder_name: player_name,
+            chat: self.game_state.chat.clone(),
+        };
+
         let msg = Message {
             kind: "set_found".into(),
-            data: serde_json::to_string(&self).unwrap(),
+            data: serde_json::to_string(&set_found_data).unwrap(),
         };
         let json = serde_json::to_string(&msg).unwrap();
         let _ = self.game_state.broadcast_tx.send(json);
     }
 
-    pub fn set_attempted(&mut self, found_set: [u8; 3]) {
+    pub fn set_attempted(&mut self, found_set: [u8; 3], player_id: Option<Uuid>) {
         // Logic to handle a found set
         let set_cards = &found_set.map(|i| self.board[i as usize].clone());
         if check_set(set_cards) {
-            self.set_found(found_set, set_cards);
+            self.set_found(found_set, set_cards, player_id);
         } else {
             return;
         }
@@ -128,9 +209,17 @@ impl Set {
 
 impl super::Game for Set {
     fn send_state_to_client(&self, broadcast_tx: &broadcast::Sender<String>, kind: String) {
+        let state_data = GameStateData {
+            game_state: self.game_state.clone(),
+            deck: self.deck.clone(),
+            board: self.board.clone(),
+            previous_set: self.previous_set.clone(),
+            chat: self.game_state.chat.clone(),
+        };
+
         let msg = Message {
             kind,
-            data: serde_json::to_string(&self).unwrap(),
+            data: serde_json::to_string(&state_data).unwrap(),
         };
         let json = serde_json::to_string(&msg).unwrap();
         let _ = broadcast_tx.send(json);
@@ -158,6 +247,28 @@ impl super::Game for Set {
                         .get("data")
                         .and_then(|v| v.as_str())
                         .unwrap_or_default();
+
+                    // Parse the chat data to get sender and message
+                    if let Ok(chat_json) = serde_json::from_str::<serde_json::Value>(data) {
+                        let sender = chat_json
+                            .get("sender")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let message = chat_json
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        // Add to chat history (regular messages don't have cards)
+                        self.game_state.chat.push(super::ChatMessage {
+                            sender: sender.clone(),
+                            text: message.clone(),
+                            cards: None,
+                        });
+                    }
+
                     let msg = Message {
                         kind: "chat".into(),
                         data: data.to_string(),
@@ -167,9 +278,17 @@ impl super::Game for Set {
                 }
                 "set_attempt" => {
                     let data = parsed.get("data");
+                    let player_id = parsed
+                        .get("player_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| Uuid::parse_str(s).ok());
+
                     if let Some(data) = data {
                         let found_set = data;
-                        println!("Found set data: {:?}", found_set);
+                        println!(
+                            "Found set data: {:?} from player: {:?}",
+                            found_set, player_id
+                        );
                         self.set_attempted(
                             found_set
                                 .as_array()
@@ -179,7 +298,44 @@ impl super::Game for Set {
                                 .collect::<Vec<u8>>()
                                 .try_into()
                                 .unwrap(),
+                            player_id,
                         );
+                    }
+                }
+                "join_player" => {
+                    let data = parsed
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+
+                    // Parse the player data
+                    if let Ok(player_json) = serde_json::from_str::<serde_json::Value>(data) {
+                        let player_name = player_json
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Anonymous")
+                            .to_string();
+
+                        // Check if player already exists
+                        let player_exists = self
+                            .game_state
+                            .players
+                            .iter()
+                            .any(|p| p.name == player_name);
+
+                        if !player_exists {
+                            // Add new player
+                            let new_player =
+                                super::player::Player::new(player_name.clone(), Uuid::new_v4());
+                            self.game_state.players.push(new_player);
+                            println!("Player {} joined the game", player_name);
+
+                            // Broadcast updated game state to all clients
+                            self.send_state_to_client(
+                                &self.game_state.broadcast_tx.clone(),
+                                "player_joined".into(),
+                            );
+                        }
                     }
                 }
                 _ => {

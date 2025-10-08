@@ -8,6 +8,6 @@ async fn main() {
 
     let routes = router::setup_routes();
 
-    println!("Listening on 127.0.0.1:3030");
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    println!("Listening on 0.0.0.0:3030");
+    warp::serve(routes).run(([0, 0, 0, 0], 3030)).await;
 }

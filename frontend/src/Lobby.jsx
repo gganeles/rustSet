@@ -25,11 +25,22 @@ export default function Lobby(props) {
 
   function connect() {
     if (socket) { try { socket.close() } catch (e) { } }
-    socket = new WebSocket('ws://127.0.0.1:3030/lobby')
+    // Use current host and determine ws/wss based on protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    // Get hostname without port, then add backend port
+    const hostname = window.location.hostname || '192.168.50.111'
+    const wsUrl = `${protocol}//${hostname}:3030/lobby`
+    socket = new WebSocket(wsUrl)
     socket.addEventListener('message', handleMessage)
     socket.addEventListener('open', () => {
       const msg = { kind: 'list_games', data: '' }
       socket.send(JSON.stringify(msg))
+    })
+    socket.addEventListener('error', (err) => {
+      console.error('WebSocket error:', err)
+    })
+    socket.addEventListener('close', () => {
+      console.log('WebSocket closed')
     })
   }
 

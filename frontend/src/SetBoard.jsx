@@ -119,12 +119,25 @@ export default function SetBoard(props) {
 
     const sendSetAttempt = (indices) => {
         if (socket && socket.readyState === WebSocket.OPEN) {
+            // Get current player name from localStorage
+            const playerName = localStorage.getItem('rs_name') || 'anonymous'
+
+            // Find current player's ID from game state
+            let playerId = null
+            if (gameState() && gameState().game_state && gameState().game_state.players) {
+                const player = gameState().game_state.players.find(p => p.name === playerName)
+                if (player) {
+                    playerId = player.id
+                }
+            }
+
             const message = {
                 kind: 'set_attempt',
-                data: indices
+                data: indices,
+                player_id: playerId
             }
             socket.send(JSON.stringify(message))
-            console.log('Sent set_attempt:', indices)
+            console.log('Sent set_attempt:', indices, 'from player:', playerId)
 
             // Clear selection after sending
             setSelectedCards([])
@@ -133,8 +146,11 @@ export default function SetBoard(props) {
         }
     }
 
+    // Calculate grid columns for desktop (3 rows)
+    const desktopCols = () => Math.ceil(cards().length / 3)
+
     return (
-        <div class="h-full flex flex-col p-4">
+        <div class="h-full flex flex-col">
             {/* Game Board - Always visible with responsive grid */}
             {cards().length === 0 ? (
                 <div class="text-center py-8 text-gray-500">
@@ -142,41 +158,63 @@ export default function SetBoard(props) {
                 </div>
             ) : (
                 <div class="flex-1 min-h-0 overflow-auto">
-                    <div class="grid grid-cols-3 md:grid-cols-4 gap-1 sm:gap-2 p-2">
+                    {/* Mobile: 3 columns, Desktop: dynamic columns to maintain 3 rows */}
+                    <div
+                        class="set-game-grid grid gap-1 sm:gap-2 p-2 mx-auto"
+                        style={{
+                            'grid-template-columns': 'repeat(3, 1fr)',
+                            '--desktop-cols': desktopCols()
+                        }}
+                    >
                         <For each={cards()}>{(card, idx) => (
-                            <div
-                                class={`border-2 h-[20vh] md:h-[25vh] rounded-[20px] shadow-sm flex items-center justify-center cursor-pointer transition-all w-full ${selectedCards().includes(idx())
-                                    ? 'bg-blue-200 border-blue-500'
-                                    : 'bg-white hover:bg-gray-50 border-gray-200'
-                                    }`}
-                                // style={{
-                                //     height: '',
-                                // }}
-                                onClick={() => handleCardClick(idx())}
+
+                            // aspect-[4 / 3] 
+                            // md: aspect-[3 / 4]
+                            <div class={`relative w-full
+                                    
+                                    card-container
+                                    `}
+                                style={{ '--desktop-cols': desktopCols() }}
                             >
-                                <img
-                                    src={getCardImageUrl(card)}
-                                    alt={`Card ${idx() + 1}`}
-                                    class="w-[15vw] max-w-[110px] h-auto object-contain p-1"
-                                    onError={(e) => {
-                                        // Fallback if image fails to load
-                                        e.target.style.display = 'none'
-                                        e.target.nextElementSibling.style.display = 'block'
-                                    }}
-                                />
-                                <div class="hidden text-xs text-gray-500">
-                                    <div>Card {idx() + 1}</div>
-                                    <ul class="space-y-0 text-sm text-gray-800">
-                                        {card.map((n, i) => (
-                                            <li key={i} class="text-center leading-tight">{n}</li>
-                                        ))}
-                                    </ul>
+
+                                <div
+                                    class={` aspect-[3/4] card-container md:max-w-[180px] inset-0 border-2 rounded-[20px] max-w-[180px] mx-auto
+                                            shadow-sm flex items-center justify-center cursor-pointer
+                                            transition-all p-4
+                                            ${selectedCards().includes(idx())
+                                            ? 'bg-blue-200 border-blue-500'
+                                            : 'bg-white hover:bg-gray-50 border-gray-200'}`}
+                                    onClick={() => handleCardClick(idx())}
+                                >
+                                    {/* 
+                                    rotate-90 md:rotate-0 
+                                    transition-transform 
+                                     */}
+                                    <div class="w-full h-full 
+                                    flex items-center justify-center">
+                                        <img
+                                            src={getCardImageUrl(card)}
+                                            alt={`Card ${idx() + 1}`}
+                                            class="
+                                            sm:w-3/4
+                                            w-full
+                                            card-container
+                                            object-contain p-1"
+                                            onError={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'block' }}
+                                            style={{ '--desktop-cols': desktopCols() }}
+
+                                        />
+
+                                        <div class="hidden text-xs text-gray-500">…</div>
+                                    </div>
                                 </div>
                             </div>
+
                         )}</For>
                     </div>
-                </div>
-            )}
-        </div>
+                </div >
+            )
+            }
+        </div >
     )
 }
