@@ -153,7 +153,7 @@ export default function Game(props) {
 
   function handleGameStateUpdate(newGameState) {
     setGameState(newGameState)
-    
+
     // Check if game is over
     if (newGameState && newGameState.game_state && newGameState.game_state.current_state === 'game_over') {
       setShowGameOver(true)
