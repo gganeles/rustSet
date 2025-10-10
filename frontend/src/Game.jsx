@@ -121,7 +121,7 @@ export default function Game(props) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     // Get hostname without port, then add backend port
     const hostname = "150.230.175.227"  // old: window.location.hostname || '127.0.0.1'
-    const wsUrl = `${protocol}//${hostname}:3030/game/ws/${id}`
+    const wsUrl = `${protocol}//${hostname}:443/game/ws/${id}`
     socket = new WebSocket(wsUrl)
     socket.addEventListener('message', handleMessage)
     socket.addEventListener('open', () => {
