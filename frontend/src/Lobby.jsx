@@ -28,7 +28,7 @@ export default function Lobby(props) {
     // Use current host and determine ws/wss based on protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     // Get hostname without port, then add backend port
-    const hostname = window.location.hostname || '192.168.50.111'
+    const hostname = "150.230.175.227"  // old: window.location.hostname || '192.168.50.111'
     const wsUrl = `${protocol}//${hostname}:3030/lobby`
     socket = new WebSocket(wsUrl)
     socket.addEventListener('message', handleMessage)
