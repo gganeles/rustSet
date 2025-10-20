@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::{self, sync::broadcast};
 use uuid::Uuid;
 
+pub mod anagrams;
 pub mod player;
 pub mod set;
 

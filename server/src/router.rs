@@ -205,6 +205,7 @@ async fn client_lobby_connection(
                             struct CreatePayload {
                                 name: String,
                                 creator: String,
+                                game_type: String,
                             }
 
                             if let Ok(payload) = serde_json::from_str::<CreatePayload>(&parsed.data)
@@ -212,7 +213,19 @@ async fn client_lobby_connection(
                                 // create game and add to list (write lock)
                                 let creator = User::new(payload.creator);
 
-                                let new_game = Box::new(game::set::Set::new(payload.name, creator));
+                                let new_game: Box<dyn Game>;
+                                match &payload.game_type[..] {
+                                    "anagrams" => {
+                                        new_game = Box::new(game::anagrams::Anagrams::new(
+                                            payload.name,
+                                            creator,
+                                        ))
+                                    }
+                                    _ => {
+                                        new_game =
+                                            Box::new(game::set::Set::new(payload.name, creator))
+                                    }
+                                }
                                 {
                                     let mut guard = games.write().await;
                                     guard.add_game(new_game);
