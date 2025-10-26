@@ -59,7 +59,7 @@ fn deal_cards() -> (Vec<Card>, Vec<Card>) {
     (cards.split_off(12), cards)
 }
 
-fn check_attribute(cards: &[u8; 3], field: usize) -> bool {
+fn check_attribute(cards: &[u8; 3]) -> bool {
     let sum: u8 = cards.iter().sum();
     sum % 3 == 0
 }
@@ -71,17 +71,33 @@ fn check_set(cards: &[Card; 3]) -> bool {
             cards[1].array[field],
             cards[2].array[field],
         ];
-        if !check_attribute(&attrs, field) {
+        if !check_attribute(&attrs) {
             return false;
         }
     }
     return true;
 }
 
+fn is_set_out(board: &Vec<Card>) -> bool {
+    for i in 0..(board.len() - 2) {
+        for j in (i + 1)..(board.len() - 1) {
+            for k in (j + 1)..board.len() {
+                let cards = [board[i].clone(), board[j].clone(), board[k].clone()];
+                if check_set(&cards) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 impl Set {
     pub fn new(name: String, creator: User) -> Self {
-        let (deck, board) = deal_cards();
-        println!("Dealt board: {:?}, deck size: {}", board, deck.len());
+        let (mut deck, mut board) = deal_cards();
+        while !is_set_out(&board) {
+            board.extend(deck.drain(0..3));
+        }
         Self {
             game_state: super::GameState {
                 id: Uuid::new_v4(),
@@ -95,24 +111,6 @@ impl Set {
             board,
             previous_set: None,
         }
-    }
-
-    fn is_set_out(&self) -> bool {
-        for i in 0..(self.board.len() - 2) {
-            for j in (i + 1)..(self.board.len() - 1) {
-                for k in (j + 1)..self.board.len() {
-                    let cards = [
-                        self.board[i].clone(),
-                        self.board[j].clone(),
-                        self.board[k].clone(),
-                    ];
-                    if check_set(&cards) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 
     fn remove_cards(&mut self, indicies: [u8; 3]) {
@@ -136,10 +134,6 @@ impl Set {
         let player_name = if let Some(pid) = player_id {
             if let Some(player) = self.game_state.players.iter_mut().find(|p| p.id == pid) {
                 player.score += 1;
-                println!(
-                    "Player {} found a set! New score: {}",
-                    player.name, player.score
-                );
                 Some(player.name.clone())
             } else {
                 None
@@ -156,12 +150,12 @@ impl Set {
                     self.board[i as usize] = self.deck.pop().unwrap();
                 }
             }
-            while !self.is_set_out() {
+            while !is_set_out(&self.board) {
                 self.board.extend(self.deck.drain(0..3));
             }
         } else {
             self.remove_cards(set_card_indicies);
-            if !self.is_set_out() {
+            if !is_set_out(&self.board) {
                 self.game_state.current_state = "game_over".into();
             }
         }
@@ -177,6 +171,7 @@ impl Set {
             sender: "System".to_string(),
             text: chat_message_text,
             cards: Some(self.previous_set.clone().unwrap_or_default()),
+            message_type: Some("success".to_string()),
         });
 
         let set_found_data = SetFoundData {
@@ -235,7 +230,6 @@ impl super::Game for Set {
 
     fn handle_game_socket_message(&mut self, txt: String) {
         let json_in = serde_json::from_str::<serde_json::Value>(&txt);
-        println!("Parsed JSON: {:?}", json_in);
         if let Ok(parsed) = json_in {
             let kind = parsed
                 .get("kind")
@@ -266,6 +260,7 @@ impl super::Game for Set {
                             sender: sender.clone(),
                             text: message.clone(),
                             cards: None,
+                            message_type: None,
                         });
                     }
 
@@ -285,10 +280,6 @@ impl super::Game for Set {
 
                     if let Some(data) = data {
                         let found_set = data;
-                        println!(
-                            "Found set data: {:?} from player: {:?}",
-                            found_set, player_id
-                        );
                         self.set_attempted(
                             found_set
                                 .as_array()
@@ -328,7 +319,6 @@ impl super::Game for Set {
                             let new_player =
                                 super::player::Player::new(player_name.clone(), Uuid::new_v4());
                             self.game_state.players.push(new_player);
-                            println!("Player {} joined the game", player_name);
 
                             // Broadcast updated game state to all clients
                             self.send_state_to_client(
@@ -347,7 +337,6 @@ impl super::Game for Set {
                     let _ = self.game_state.broadcast_tx.send(json);
                 }
             }
-            println!("Received message: {:?}", txt);
             // Placeholder logic
         }
     }

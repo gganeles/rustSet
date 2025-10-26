@@ -23,7 +23,6 @@ export default function App() {
     // Preload all card images on first load
     preloadCardImages().then(result => {
       setImagesLoaded(true)
-      console.log('All card images cached!')
     }).catch(err => {
       console.error('Error preloading images:', err)
       setImagesLoaded(true) // Continue anyway
@@ -35,7 +34,7 @@ export default function App() {
   }
 
   return (
-    <div class="max-w-[84rem] mx-auto p-[1.5rem] h-screen font-sans">
+    <div class="h-screen font-sans">
       {route().name === 'lobby' && <Lobby onJoin={handleJoin} />}
 
       {route().name === 'game' && <Game id={route().id} />}

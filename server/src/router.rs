@@ -5,9 +5,8 @@ use crate::user::User;
 use futures::{future, SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast::{self, Sender};
-use tokio::sync::RwLock;
 use uuid::Uuid;
 use warp::Filter;
 
@@ -62,7 +61,7 @@ async fn handle_game_ws(
     games: Arc<RwLock<GameList>>,
 ) -> Result<Box<dyn warp::Reply>, Infallible> {
     // validate before upgrade so we can return a 404 instead of upgrading then returning nothing
-    let guard = games.read().await;
+    let guard = games.read().unwrap();
     // GameList doesn't expose `is_empty()`; check via iterator
     if guard.iter().next().is_none() {
         return Ok(Box::new(warp::reply::with_status(
@@ -97,7 +96,7 @@ async fn client_game_connection(
     // Find the game and get its broadcast sender
 
     let game_opt = {
-        let guard = games.read().await;
+        let guard = games.read().unwrap();
         guard
             .games
             .iter()
@@ -127,7 +126,7 @@ async fn client_game_connection(
         });
         // emit game state to client immediately on connection
         {
-            let guard = games.read().await;
+            let guard = games.read().unwrap();
             if let Some(game) = guard.games.iter().find(|g| g.copy_details().id == room_id) {
                 game.send_state_to_client(&game_tx, "init".into());
             }
@@ -137,7 +136,7 @@ async fn client_game_connection(
         while let Some(Ok(message)) = ws_rx.next().await {
             if message.is_text() {
                 let txt = message.to_str().unwrap_or_default().to_string();
-                let mut guard = games.write().await;
+                let mut guard = games.write().unwrap();
                 if let Some(game_mut) = guard
                     .games
                     .iter_mut()
@@ -216,10 +215,8 @@ async fn client_lobby_connection(
                                 let new_game: Box<dyn Game>;
                                 match &payload.game_type[..] {
                                     "anagrams" => {
-                                        new_game = Box::new(game::anagrams::Anagrams::new(
-                                            payload.name,
-                                            creator,
-                                        ))
+                                        new_game =
+                                            Box::new(game::anagrams::Anagrams::new(payload.name))
                                     }
                                     _ => {
                                         new_game =
@@ -227,11 +224,11 @@ async fn client_lobby_connection(
                                     }
                                 }
                                 {
-                                    let mut guard = games.write().await;
+                                    let mut guard = games.write().unwrap();
                                     guard.add_game(new_game);
                                 }
                                 // broadcast updated game list (read lock)
-                                let guard = games.read().await;
+                                let guard = games.read().unwrap();
                                 let list = guard.list_games();
                                 let msg = Message {
                                     kind: "games_list".into(),
@@ -243,7 +240,7 @@ async fn client_lobby_connection(
                         }
                         "list_games" => {
                             let list = {
-                                let guard = games.read().await;
+                                let guard = games.read().unwrap();
                                 guard.list_games()
                             };
                             let msg = Message {
@@ -265,7 +262,7 @@ async fn client_lobby_connection(
                                 if let Ok(game_id) = Uuid::parse_str(&payload.id) {
                                     // Find and remove the game
                                     {
-                                        let mut guard = games.write().await;
+                                        let mut guard = games.write().unwrap();
                                         if let Some(pos) = guard
                                             .games
                                             .iter()
@@ -275,7 +272,7 @@ async fn client_lobby_connection(
                                         }
                                     }
                                     // Broadcast updated game list
-                                    let guard = games.read().await;
+                                    let guard = games.read().unwrap();
                                     let list = guard.list_games();
                                     let msg = Message {
                                         kind: "games_list".into(),

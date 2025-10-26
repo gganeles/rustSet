@@ -19,15 +19,10 @@ export function preloadCardImages() {
                     const img = new Image()
                     img.src = url
                     images.push(img)
-
-                    // Optional: log progress
-                    // console.log(`Preloading: ${url}`)
                 }
             }
         }
     }
-
-    console.log(`Preloading ${images.length} card images...`)
 
     // Return a promise that resolves when all images are loaded
     return Promise.allSettled(
@@ -40,7 +35,6 @@ export function preloadCardImages() {
     ).then(results => {
         const loaded = results.filter(r => r.status === 'fulfilled').length
         const failed = results.filter(r => r.status === 'rejected').length
-        console.log(`Card images preloaded: ${loaded} succeeded, ${failed} failed`)
         return { loaded, failed, total: images.length }
     })
 }

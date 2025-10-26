@@ -1,3 +1,4 @@
+// Game trait is synchronous to keep implementations simple and avoid requiring async_trait
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::{self, sync::broadcast};
@@ -12,6 +13,8 @@ pub struct ChatMessage {
     pub sender: String,
     pub text: String,
     pub cards: Option<Vec<set::Card>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_type: Option<String>,
 }
 
 #[derive(Default)]

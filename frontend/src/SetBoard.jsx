@@ -1,4 +1,4 @@
-import { For, createSignal, onMount } from 'solid-js'
+import { For, createSignal, onMount, createEffect } from 'solid-js'
 
 export default function SetBoard(props) {
     const socket = props.socket || null
@@ -26,15 +26,21 @@ export default function SetBoard(props) {
 
     // Function to render the new board from game data
     const renderBoard = (gameData) => {
+        // If server wrapped payload as { game: {...}, chat: [...] }, unwrap it
+        if (gameData && gameData.game) {
+            gameData = gameData.game
+        }
         if (!gameData.board) {
+            // If this payload looks like an anagrams/game envelope, ignore it
+            if (gameData.pot || gameData.bag || gameData.players_boards || (gameData.game_state && !gameData.board)) {
+                return
+            }
             console.error('No board data found in game data')
             return
         }
 
         // Extract card arrays from the board
         const boardCards = gameData.board.map(card => card.array)
-
-        console.log('Rendering board with cards:', boardCards)
 
         // Update the cards state to trigger re-render
         setCards(boardCards)
@@ -53,17 +59,14 @@ export default function SetBoard(props) {
     const handleMessage = (e) => {
         try {
             const message = JSON.parse(e.data)
-            console.log('Received message:', message)
 
             if (message.kind === 'init') {
                 // Parse and render initial game state
                 const gameData = JSON.parse(message.data)
-                console.log('Initial game data:', gameData)
                 renderBoard(gameData)
             } else if (message.kind === 'set_found') {
                 // Parse and render updated board after set was found
                 const gameData = JSON.parse(message.data)
-                console.log('Set found! Updated game data:', gameData)
                 renderBoard(gameData)
             }
         } catch (err) {
@@ -75,6 +78,26 @@ export default function SetBoard(props) {
     onMount(() => {
         if (socket) {
             socket.addEventListener('message', handleMessage)
+        }
+        // If initial data was passed (init arrived before mount), render it
+        const maybe = typeof props.initialData === 'function' ? props.initialData() : props.initialData
+        if (maybe) {
+            try {
+                renderBoard(maybe)
+            } catch (err) {
+                console.error('Error initializing SetBoard from initialData:', err)
+            }
+        }
+    })
+
+    // Also react to changes in initialData (covers init arriving after mount)
+    createEffect(() => {
+        const init = typeof props.initialData === 'function' ? props.initialData() : props.initialData
+        if (!init) return
+        try {
+            renderBoard(init)
+        } catch (err) {
+            console.error('Error initializing SetBoard from initialData (effect):', err)
         }
     })
 
@@ -108,7 +131,6 @@ export default function SetBoard(props) {
             for (let j = i + 1; j < n; j++) {
                 for (let k = j + 1; k < n; k++) {
                     if (setCheck([board[i], board[j], board[k]])) {
-                        console.log('Found a set on the board:', i, j, k)
                         return true
                     }
                 }
@@ -137,7 +159,6 @@ export default function SetBoard(props) {
                 player_id: playerId
             }
             socket.send(JSON.stringify(message))
-            console.log('Sent set_attempt:', indices, 'from player:', playerId)
 
             // Clear selection after sending
             setSelectedCards([])

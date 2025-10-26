@@ -1,11 +1,13 @@
 import { createSignal, onCleanup, onMount } from 'solid-js'
 import NameModal from './NameModal'
 import { navigate } from './utils/test.js'
+import { hostname } from './const.js'
 
 export default function Lobby(props) {
   const [games, setGames] = createSignal([])
   const [name, setName] = createSignal('')
   const [creator, setCreator] = createSignal('')
+  const [gameType, setGameType] = createSignal('set')
   const [showNameModal, setShowNameModal] = createSignal(true)
   const [nameError, setNameError] = createSignal('')
   const [gameError, setGameError] = createSignal('')
@@ -28,8 +30,7 @@ export default function Lobby(props) {
     // Use current host and determine ws/wss based on protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     // Get hostname without port, then add backend port
-    const hostname = "wss-set.gganeles.com"  // old: window.location.hostname || '192.168.50.111'
-    const wsUrl = `${protocol}//${hostname}:443/lobby`
+    const wsUrl = `${protocol}//${hostname}/lobby`
     socket = new WebSocket(wsUrl)
     socket.addEventListener('message', handleMessage)
     socket.addEventListener('open', () => {
@@ -39,9 +40,7 @@ export default function Lobby(props) {
     socket.addEventListener('error', (err) => {
       console.error('WebSocket error:', err)
     })
-    socket.addEventListener('close', () => {
-      console.log('WebSocket closed')
-    })
+    socket.addEventListener('close', () => { })
   }
 
   // Attempt to read saved name and prefill creator. If not present, show modal.
@@ -75,7 +74,7 @@ export default function Lobby(props) {
       return
     }
     if (!socket || socket.readyState !== WebSocket.OPEN) return
-    const payload = { name: name(), creator: creator() }
+    const payload = { name: name(), creator: creator(), game_type: gameType() }
     socket.send(JSON.stringify({ kind: 'create_game', data: JSON.stringify(payload) }))
     setName('')
     setGameError('')
@@ -120,7 +119,7 @@ export default function Lobby(props) {
   }
 
   return (
-    <div>
+    <div class='max-w-[84rem] mx-auto p-6'>
       {showNameModal() && (
         <NameModal prefill={creator()} onSave={handleSaveName} />
       )}
@@ -138,6 +137,10 @@ export default function Lobby(props) {
 
       <form onSubmit={createGame} class="flex flex-wrap items-center gap-2 mb-6">
         <input class="px-3 py-2 border rounded flex-1 min-w-[160px]" placeholder="game name" value={name()} onInput={(e) => setName(e.target.value)} />
+        <select class="px-3 py-2 border rounded" value={gameType()} onInput={(e) => setGameType(e.target.value)}>
+          <option value="set">Set</option>
+          <option value="anagrams">Anagram</option>
+        </select>
         <button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Create Game</button>
         <div>
           {gameError() && <span class="text-red-600">{gameError()}</span>}
