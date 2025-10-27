@@ -1,1 +1,1 @@
-export const hostname = /*"localhost:3030"*/ "wss-set.gganeles.com:433"
+export const hostname = /*"localhost:3030"*/ "wss-set.gganeles.com"
