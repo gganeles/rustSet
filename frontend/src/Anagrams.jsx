@@ -8,6 +8,7 @@ export default function Anagrams(props) {
     const [gameState, setGameState] = createSignal(null)
     const [showGameOver, setShowGameOver] = createSignal(false)
     const [input, setInput] = createSignal('')
+    const [isChatOpen, setIsChatOpen] = createSignal(false)
     let messagesEndRef
     let inlineChatRef
 
@@ -164,61 +165,69 @@ export default function Anagrams(props) {
     const pot = () => (gameState() && gameState().pot) ? gameState().pot.join(' ') : ''
 
     return (
-        <div class="h-full flex flex-col bg-gray-50">
-            {/* App bar (Material-like) */}
-            <header class="w-full bg-white shadow-md py-2 px-3 md:py-3 md:px-4 flex items-center justify-between">
-                <div class="flex items-center gap-2 md:gap-4">
-                    <button onClick={() => navigate('/')} class="rounded-full p-1.5 md:p-2 hover:bg-gray-100">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+        <div class="h-full flex flex-col md:flex-row">
+            {/* Main Content Area */}
+            <div class="flex-1 flex flex-col min-w-0">
+                {/* App bar (Material-like) */}
+                <header class="w-full bg-white shadow-md z-10 py-2 px-3 md:py-3 md:px-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2 md:gap-4">
+                        <button onClick={() => navigate('/')} class="rounded-full p-1.5 md:p-2 hover:bg-gray-100">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <div>
+                            <div class="text-xs md:text-sm text-gray-500">Game</div>
+                            <div class="text-base md:text-lg font-medium text-gray-900">{gameState() && gameState().game_state ? gameState().game_state.name : 'Anagrams'}</div>
+                        </div>
+                    </div>
+                    {/* Mobile chat toggle button */}
+                    <button
+                        onClick={() => setIsChatOpen(!isChatOpen())}
+                        class="md:hidden rounded-full p-1.5 hover:bg-gray-100"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-keyboard-icon lucide-keyboard"><path d="M10 8h.01" /><path d="M12 12h.01" /><path d="M14 8h.01" /><path d="M16 12h.01" /><path d="M18 8h.01" /><path d="M6 8h.01" /><path d="M7 16h10" /><path d="M8 12h.01" /><rect width="20" height="16" x="2" y="4" rx="2" /></svg>
                     </button>
-                    <div>
-                        <div class="text-xs md:text-sm text-gray-500">Game</div>
-                        <div class="text-base md:text-lg font-medium text-gray-900">{gameState() && gameState().game_state ? gameState().game_state.name : 'Anagrams'}</div>
-                    </div>
-                </div>
-            </header>
+                </header>
 
-            <main class="p-3 md:p-6 flex-1 overflow-auto">
-                {/* Enemy Boards */}
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6 mb-4 md:mb-8">
-                    {(() => {
-                        const boards = (gameState() && gameState().players_boards) ? gameState().players_boards : []
-                        const meName = localStorage.getItem('rs_name') || ''
-                        return boards
-                            .filter(pb => pb.player && pb.player.name && pb.player.name !== meName)
-                            .map(pb => (
-                                <div class="bg-white rounded-lg shadow-sm p-3 md:p-4">
-                                    <div class="text-xs md:text-sm text-gray-600 mb-2">{pb.player.name}</div>
-                                    <div class="flex flex-wrap gap-2 md:gap-4">
-                                        {pb.words && pb.words.length > 0 ? (
-                                            pb.words.map((word, wordIdx) => (
-                                                <div key={wordIdx} class="flex gap-0.5 md:gap-2">
-                                                    {word.split('').map((ch, charIdx) => (
-                                                        <div key={charIdx} class="w-5 h-5 md:w-6 md:h-6 bg-orange-100 rounded-sm border-2 border-orange-200 shadow-md flex items-center justify-center text-sm md:text-lg font-bold">{ch}</div>
-                                                    ))}
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div class="text-gray-500 text-sm">(no words)</div>
-                                        )}
+                <main class="p-3 md:p-6 flex-1 overflow-auto">
+                    {/* Enemy Boards */}
+                    <div class="flex flex-row flex-wrap gap-3 md:gap-6 mb-4 md:mb-8">
+                        {(() => {
+                            const boards = (gameState() && gameState().players_boards) ? gameState().players_boards : []
+                            const meName = localStorage.getItem('rs_name') || ''
+                            return boards
+                                .filter(pb => pb.player && pb.player.name && pb.player.name !== meName)
+                                .map(pb => (
+                                    <div class="bg-white rounded-lg shadow-sm p-3 md:p-4">
+                                        <div class="text-xs md:text-sm text-gray-600 mb-2">{pb.player.name}</div>
+                                        <div class="flex flex-wrap gap-4 md:gap-6">
+                                            {pb.words && pb.words.length > 0 ? (
+                                                pb.words.map((word, wordIdx) => (
+                                                    <div key={wordIdx} class="flex gap-0.5 md:gap-1">
+                                                        {word.split('').map((ch, charIdx) => (
+                                                            <div key={charIdx} class="w-5 h-5 md:w-6 md:h-6 bg-orange-100 rounded-sm border-2 border-orange-200 shadow-md flex items-center justify-center text-sm md:text-lg font-bold">{ch}</div>
+                                                        ))}
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div class="text-gray-500 text-sm">(no words)</div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))
-                    })()}
-                </div>
-
-                {/* Pot */}
-                <div class="flex justify-center mb-4 md:mb-10">
-                    <div class="flex flex-wrap gap-1.5 md:gap-3 justify-center">
-                        {(gameState() && gameState().pot) ? gameState().pot.map((ch) => (
-                            <div class="w-10 h-10 md:w-16 md:h-16 bg-orange-100 rounded-lg border-2 border-orange-200 shadow-md flex items-center justify-center text-lg md:text-2xl font-bold">{ch}</div>
-                        )) : <div class="text-gray-500 text-sm">(empty)</div>}
+                                ))
+                        })()}
                     </div>
-                </div>
 
-                {/* Player Board, Chat, and Attempt Input */}
-                <div class="flex flex-col w-full gap-3 md:gap-6 items-start">
-                    <div class="w-full">
+                    {/* Pot */}
+                    <div class="flex justify-center mb-4 md:mb-10">
+                        <div class="flex flex-wrap gap-1.5 md:gap-3 justify-center">
+                            {(gameState() && gameState().pot) ? gameState().pot.map((ch) => (
+                                <div class="w-8 h-8 md:w-12 md:h-12 bg-orange-100 rounded-lg border-2 border-orange-200 shadow-md flex items-center justify-center text-lg md:text-2xl font-bold">{ch}</div>
+                            )) : <div class="text-gray-500 text-sm">(empty)</div>}
+                        </div>
+                    </div>
+
+                    {/* Player Board */}
+                    <div class="w-full mb-4 md:mb-6">
                         <div class="bg-white rounded-lg shadow-sm p-3 md:p-4 min-h-[80px] md:min-h-[120px]">
                             <div class="flex flex-wrap gap-4 md:gap-8">
                                 {(() => {
@@ -238,47 +247,84 @@ export default function Anagrams(props) {
                             </div>
                         </div>
                     </div>
+                </main>
+            </div>
 
-                    {/* Chat (recent messages) - moved above the attempt input */}
-                    <div class="w-full mb-2 md:mb-4">
-                        <div ref={el => inlineChatRef = el} class="p-2 md:p-3 rounded h-32 md:h-40 overflow-auto bg-white shadow-inner">
-                            <ul class="space-y-2 md:space-y-3 p-0.5 md:p-1">
-                                {messages().map((m, i) => {
-                                    const bgColor = m.messageType === 'success'
-                                        ? 'bg-green-50 border border-green-100 text-green-800'
-                                        : m.messageType === 'error'
-                                            ? 'bg-red-50 border border-red-100 text-red-800'
-                                            : m.isSystem
-                                                ? 'bg-blue-50 border border-blue-100 text-blue-800'
-                                                : 'bg-gray-50 border border-gray-100 text-gray-900'
-                                    return (
-                                        <li key={i} class="flex items-start gap-2 md:gap-3">
-                                            <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-xs font-semibold flex-shrink-0">{(m.sender || 'P').charAt(0).toUpperCase()}</div>
-                                            <div class={`rounded-lg px-2 py-1.5 md:px-3 md:py-2 ${bgColor} shadow-sm flex-1 min-w-0`}>
-                                                <div class="text-xs font-semibold mb-0.5 md:mb-1">{m.sender}</div>
-                                                <div class="text-xs md:text-sm break-words">{m.text}</div>
-                                            </div>
-                                        </li>
-                                    )
-                                })}
-                                <div ref={messagesEndRef}></div>
-                            </ul>
-                        </div>
-                    </div>
-
-                    {/* Attempt input */}
-                    <div class="w-full md:max-w-xl md:mx-auto">
-                        <form onSubmit={submitAttempt} class="flex gap-2 items-center">
-                            <label class="flex-1">
-                                <div class="relative">
-                                    <input class="w-full px-3 py-2 md:px-4 md:py-3 rounded-md bg-gray-100 border border-transparent focus:border-indigo-300 focus:shadow-outline text-sm" placeholder="Type word..." value={input()} onInput={(e) => setInput(e.target.value)} />
-                                </div>
-                            </label>
-                            <button class="px-3 py-2 md:px-4 md:py-2 bg-indigo-600 text-white rounded-md shadow-md hover:bg-indigo-700 text-sm md:text-base" type="submit">Submit</button>
-                        </form>
-                    </div>
+            {/* Chat Sidebar - Always visible on desktop, toggleable on mobile */}
+            <div class={`
+                fixed md:relative inset-y-0 right-0 z-40
+                w-80 md:w-96
+                bg-white border-l border-gray-200 shadow-2xl md:shadow-none
+                flex flex-col
+                transform transition-transform duration-300 ease-in-out
+                ${isChatOpen() ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+            `}>
+                {/* Chat Header */}
+                <div class="flex items-center justify-between p-3 md:p-4 border-b border-gray-200 bg-gray-50">
+                    <h3 class="font-semibold text-base md:text-lg text-gray-900">Chat</h3>
+                    <button
+                        onClick={() => setIsChatOpen(false)}
+                        class="md:hidden text-gray-500 hover:text-gray-700 p-1"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
-            </main>
+
+                {/* Chat Messages */}
+                <div ref={el => inlineChatRef = el} class="flex-1 overflow-auto p-3 md:p-4">
+                    <ul class="space-y-2 md:space-y-3">
+                        {messages().map((m, i) => {
+                            const bgColor = m.messageType === 'success'
+                                ? 'bg-green-50 border border-green-100 text-green-800'
+                                : m.messageType === 'error'
+                                    ? 'bg-red-50 border border-red-100 text-red-800'
+                                    : m.isSystem
+                                        ? 'bg-blue-50 border border-blue-100 text-blue-800'
+                                        : 'bg-gray-50 border border-gray-100 text-gray-900'
+                            return (
+                                <li key={i} class="flex items-start gap-2 md:gap-3">
+                                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-xs font-semibold flex-shrink-0">{(m.sender || 'P').charAt(0).toUpperCase()}</div>
+                                    <div class={`rounded-lg px-2 py-1.5 md:px-3 md:py-2 ${bgColor} shadow-sm flex-1 min-w-0`}>
+                                        <div class="text-xs font-semibold mb-0.5 md:mb-1">{m.sender}</div>
+                                        <div class="text-xs md:text-sm break-words">{m.text}</div>
+                                    </div>
+                                </li>
+                            )
+                        })}
+                        <div ref={messagesEndRef}></div>
+                    </ul>
+                </div>
+
+                {/* Attempt Input at bottom of chat */}
+                <div class="border-t border-gray-200 p-3 md:p-4 bg-white">
+                    <form onSubmit={submitAttempt} class="flex gap-2 items-center">
+                        <label class="flex-1">
+                            <input
+                                class="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none text-sm"
+                                placeholder="Type word..."
+                                value={input()}
+                                onInput={(e) => setInput(e.target.value)}
+                            />
+                        </label>
+                        <button
+                            class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm font-medium"
+                            type="submit"
+                        >
+                            Submit
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            {/* Mobile overlay when chat is open */}
+            {isChatOpen() && (
+                <div
+                    class="md:hidden fixed inset-0 bg-opacity-0 z-30"
+                    onClick={() => setIsChatOpen(false)}
+                />
+            )}
 
             {showGameOver() && gameState() && gameState().game_state && gameState().game_state.players && (
                 <GameOverModal players={gameState().game_state.players} onClose={() => setShowGameOver(false)} />
