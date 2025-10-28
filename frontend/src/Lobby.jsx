@@ -19,6 +19,16 @@ export default function Lobby(props) {
       const data = JSON.parse(e.data)
       if (data.kind === 'games_list') {
         try { setGames(JSON.parse(data.data)) } catch (err) { }
+      } else if (data.kind === 'game_created') {
+        // Auto-join the game that was just created
+        try {
+          const payload = JSON.parse(data.data)
+          if (payload.id && payload.creator === creator()) {
+            joinGame(payload.id)
+          }
+        } catch (err) {
+          console.error('Failed to parse game_created:', err)
+        }
       }
     } catch (err) {
       // ignore

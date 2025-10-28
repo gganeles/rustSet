@@ -210,7 +210,7 @@ async fn client_lobby_connection(
                             if let Ok(payload) = serde_json::from_str::<CreatePayload>(&parsed.data)
                             {
                                 // create game and add to list (write lock)
-                                let creator = User::new(payload.creator);
+                                let creator = User::new(payload.creator.clone());
 
                                 let new_game: Box<dyn Game>;
                                 match &payload.game_type[..] {
@@ -223,6 +223,7 @@ async fn client_lobby_connection(
                                             Box::new(game::set::Set::new(payload.name, creator))
                                     }
                                 }
+                                let game_id = new_game.copy_details().id;
                                 {
                                     let mut guard = games.write().unwrap();
                                     guard.add_game(new_game);
@@ -236,6 +237,24 @@ async fn client_lobby_connection(
                                 };
                                 let json = serde_json::to_string(&msg).unwrap();
                                 let _ = tx2.send(json);
+
+                                // Send game_created message with the game ID to auto-join
+                                #[derive(serde::Serialize)]
+                                struct GameCreatedPayload {
+                                    id: String,
+                                    creator: String,
+                                }
+                                let created_payload = GameCreatedPayload {
+                                    id: game_id.to_string(),
+                                    creator: payload.creator,
+                                };
+                                let created_msg = Message {
+                                    kind: "game_created".into(),
+                                    data: serde_json::to_string(&created_payload)
+                                        .unwrap_or_default(),
+                                };
+                                let created_json = serde_json::to_string(&created_msg).unwrap();
+                                let _ = tx2.send(created_json);
                             }
                         }
                         "list_games" => {
