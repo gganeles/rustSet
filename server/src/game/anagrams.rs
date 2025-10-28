@@ -2,11 +2,13 @@ use crate::{
     game::{player::Player, GameState},
     user::User,
 };
+use lazy_static::lazy_static;
+use nlprule::{tokenizer_filename, Tokenizer};
 use std::sync::RwLock;
 use std::{
     collections::{BTreeSet, HashMap},
     io::BufRead,
-    sync::{Arc, OnceLock},
+    sync::Arc,
 };
 
 use super::Uuid;
@@ -17,11 +19,9 @@ use crate::router::Message;
 
 use tokio::sync::broadcast;
 
-// Lazy-initialized BTreeMap dictionary for anagrams (log(n) lookups)
-static DICT: OnceLock<Arc<BTreeSet<String>>> = OnceLock::new();
-
-fn get_dict() -> Arc<BTreeSet<String>> {
-    DICT.get_or_init(|| {
+lazy_static! {
+    // Dictionary for anagrams (log(n) lookups)
+    static ref DICT: Arc<BTreeSet<String>> = {
         let mut set: BTreeSet<String> = BTreeSet::new();
         // Build path relative to this crate
         let path = format!("{}/src/game/words.txt", env!("CARGO_MANIFEST_DIR"));
@@ -36,8 +36,43 @@ fn get_dict() -> Arc<BTreeSet<String>> {
             }
         }
         Arc::new(set)
-    })
-    .clone()
+    };
+
+    // Lemmatizer for word comparison
+    static ref LEMMATIZER: Tokenizer = {
+        let mut tokenizer_bytes: &'static [u8] =
+            include_bytes!(concat!(env!("OUT_DIR"), "/", tokenizer_filename!("en")));
+        Tokenizer::from_reader(&mut tokenizer_bytes).expect("tokenizer binary is valid")
+    };
+}
+
+fn are_lemmas_equal(word1: &str, word2: &str) -> bool {
+    let lemmatizer = LEMMATIZER.tagger();
+
+    let lemmas1: Vec<String> = lemmatizer
+        .get_tags(word1)
+        .map(|t| t.lemma().as_str().to_owned())
+        .collect();
+
+    let lemmas2: Vec<String> = lemmatizer
+        .get_tags(word2)
+        .map(|t| t.lemma().as_str().to_owned())
+        .collect();
+
+    dbg!(&lemmas1);
+    dbg!(&lemmas2);
+    for lemma1 in &lemmas1 {
+        for lemma2 in &lemmas2 {
+            if lemma1 == lemma2 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn get_dict() -> Arc<BTreeSet<String>> {
+    DICT.clone()
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -139,12 +174,16 @@ fn pot_anagram(word_to_check: &str, mut pot: Vec<char>) -> Option<Vec<char>> {
 
 fn some_anagram(existing_word: &str, word_to_check: &str, mut pot: Vec<char>) -> Option<Vec<char>> {
     let mut counter: HashMap<char, i8> = HashMap::new();
+    if (word_to_check.len() <= existing_word.len()) {
+        return None;
+    }
+
+    if are_lemmas_equal(existing_word, word_to_check) {
+        return None;
+    }
 
     for letter in word_to_check.chars() {
-        match counter.get(&letter) {
-            Some(num) => counter.insert(letter, num + 1),
-            None => counter.insert(letter, 1),
-        };
+        *counter.entry(letter).or_insert(0) += 1;
     }
 
     for letter in existing_word.chars() {
@@ -813,5 +852,65 @@ mod tests {
                 .unwrap();
             assert!(!bob_board.words.contains(&"eat".to_string()));
         }
+    }
+
+    #[test]
+    fn test_lemmatizer_same_lemma() {
+        // "runs" and "run" should have the same lemma
+        assert!(are_lemmas_equal("runs", "run"));
+        assert!(are_lemmas_equal("run", "runs"));
+    }
+
+    #[test]
+    fn test_lemmatizer_plural_singular() {
+        // "cats" and "cat" should have the same lemma
+        assert!(are_lemmas_equal("cats", "cat"));
+        assert!(are_lemmas_equal("cat", "cats"));
+    }
+
+    #[test]
+    fn test_lemmatizer_verb_forms() {
+        // Different verb forms should match
+        assert!(are_lemmas_equal("eating", "eat"));
+        assert!(are_lemmas_equal("ate", "eat"));
+        assert!(are_lemmas_equal("eaten", "eat"));
+    }
+
+    #[test]
+    fn test_lemmatizer_different_words() {
+        // Completely different words should not match
+        assert!(!are_lemmas_equal("cat", "dog"));
+        assert!(!are_lemmas_equal("run", "walk"));
+        assert!(!are_lemmas_equal("happy", "sad"));
+    }
+
+    #[test]
+    fn test_lemmatizer_same_word() {
+        // Same word should always match
+        assert!(are_lemmas_equal("hello", "hello"));
+        assert!(are_lemmas_equal("world", "world"));
+    }
+
+    #[test]
+    fn test_lemmatizer_adjective_forms() {
+        // Comparative and superlative forms
+        assert!(are_lemmas_equal("bigger", "big"));
+        assert!(are_lemmas_equal("biggest", "big"));
+        assert!(are_lemmas_equal("happier", "happy"));
+    }
+
+    #[test]
+    fn test_lemmatizer_past_tense() {
+        // Regular and irregular past tense
+        assert!(are_lemmas_equal("walked", "walk"));
+        assert!(are_lemmas_equal("went", "go"));
+        assert!(are_lemmas_equal("ran", "run"));
+    }
+
+    #[test]
+    fn test_lemmatizer_case_insensitive() {
+        // Should work regardless of case since we convert to lowercase in the main code
+        assert!(are_lemmas_equal("RUNS", "run"));
+        assert!(are_lemmas_equal("Run", "RUNNING"));
     }
 }
