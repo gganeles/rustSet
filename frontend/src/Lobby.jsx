@@ -21,6 +21,7 @@ export default function Lobby(props) {
         try { setGames(JSON.parse(data.data)) } catch (err) { }
       } else if (data.kind === 'game_created') {
         // Auto-join the game that was just created
+        console.info('Received game_created message:', data)
         try {
           const payload = JSON.parse(data.data)
           if (payload.id && payload.creator === creator()) {

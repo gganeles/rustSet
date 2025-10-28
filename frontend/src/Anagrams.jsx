@@ -254,7 +254,7 @@ export default function Anagrams(props) {
 
                         </div>
                         {/*inline two message chat*/}
-                        <div class="flex flex-col mt-1">
+                        <div class="flex flex-col mt-1 md:hidden">
                             <div ref={el => inlineChatScrollRef = el} class="h-16 overflow-auto">
                                 <ul class="space-y-1">
                                     {messages().map((m, i) => (
