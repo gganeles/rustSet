@@ -11,16 +11,22 @@ export default function Anagrams(props) {
     const [isChatOpen, setIsChatOpen] = createSignal(false)
     let messagesEndRef
     let inlineChatRef
+    let inlineChatScrollRef
 
     createEffect(() => {
         const msgs = messages()
-        if (messagesEndRef && msgs.length > 0) {
-            // scroll inline chat
+        if (msgs.length > 0) {
+            // scroll both inline chat and sidebar chat
             setTimeout(() => {
+                try {
+                    if (inlineChatScrollRef) inlineChatScrollRef.scrollTop = inlineChatScrollRef.scrollHeight
+                } catch (e) { }
                 try {
                     if (inlineChatRef) inlineChatRef.scrollTop = inlineChatRef.scrollHeight
                 } catch (e) { }
-                try { messagesEndRef.scrollIntoView({ behavior: 'smooth', block: 'end' }) } catch (e) { }
+                try {
+                    if (messagesEndRef) messagesEndRef.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                } catch (e) { }
             }, 0)
         }
     })
@@ -245,6 +251,28 @@ export default function Anagrams(props) {
                                     ))
                                 })()}
                             </div>
+
+                        </div>
+                        {/*inline two message chat*/}
+                        <div class="flex flex-col mt-1">
+                            <div ref={el => inlineChatScrollRef = el} class="h-16 overflow-auto">
+                                <ul class="space-y-1">
+                                    {messages().map((m, i) => (
+                                        <li key={i} class={m.isSystem ? "text-gray-500 italic underline text-sm" : "text-sm"}>
+                                            {m.isSystem ? (
+                                                <span>{m.text}</span>
+                                            ) : (
+                                                <span><span class="font-semibold">{m.sender}:</span> {m.text}</span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            {/*inline chat*/}
+                            <form onSubmit={submitAttempt} class="flex items-center mt-2">
+                                <input type="text" value={input()} onInput={e => setInput(e.target.value)} class="border border-gray-300 rounded-md p-2 mr-2 flex-1" placeholder="Type your message..." />
+                                <button type="submit" class="bg-blue-500 text-white rounded-md px-4 py-2">Send</button>
+                            </form>
                         </div>
                     </div>
                 </main>
@@ -274,25 +302,16 @@ export default function Anagrams(props) {
 
                 {/* Chat Messages */}
                 <div ref={el => inlineChatRef = el} class="flex-1 overflow-auto p-3 md:p-4">
-                    <ul class="space-y-2 md:space-y-3">
-                        {messages().map((m, i) => {
-                            const bgColor = m.messageType === 'success'
-                                ? 'bg-green-50 border border-green-100 text-green-800'
-                                : m.messageType === 'error'
-                                    ? 'bg-red-50 border border-red-100 text-red-800'
-                                    : m.isSystem
-                                        ? 'bg-blue-50 border border-blue-100 text-blue-800'
-                                        : 'bg-gray-50 border border-gray-100 text-gray-900'
-                            return (
-                                <li key={i} class="flex items-start gap-2 md:gap-3">
-                                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-xs font-semibold flex-shrink-0">{(m.sender || 'P').charAt(0).toUpperCase()}</div>
-                                    <div class={`rounded-lg px-2 py-1.5 md:px-3 md:py-2 ${bgColor} shadow-sm flex-1 min-w-0`}>
-                                        <div class="text-xs font-semibold mb-0.5 md:mb-1">{m.sender}</div>
-                                        <div class="text-xs md:text-sm break-words">{m.text}</div>
-                                    </div>
-                                </li>
-                            )
-                        })}
+                    <ul class="space-y-1 md:space-y-1.5">
+                        {messages().map((m, i) => (
+                            <li key={i} class={m.isSystem ? "text-gray-500 italic underline text-sm" : "text-sm"}>
+                                {m.isSystem ? (
+                                    <span>{m.text}</span>
+                                ) : (
+                                    <span><span class="font-semibold">{m.sender}:</span> {m.text}</span>
+                                )}
+                            </li>
+                        ))}
                         <div ref={messagesEndRef}></div>
                     </ul>
                 </div>

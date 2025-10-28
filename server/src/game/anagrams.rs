@@ -59,8 +59,6 @@ fn are_lemmas_equal(word1: &str, word2: &str) -> bool {
         .map(|t| t.lemma().as_str().to_owned())
         .collect();
 
-    dbg!(&lemmas1);
-    dbg!(&lemmas2);
     for lemma1 in &lemmas1 {
         for lemma2 in &lemmas2 {
             if lemma1 == lemma2 {
@@ -199,17 +197,16 @@ fn some_anagram(existing_word: &str, word_to_check: &str, mut pot: Vec<char>) ->
         };
     }
 
-    for letter in counter.iter_mut() {
-        while *letter.1 > 0 {
-            for i in 0..pot.len() {
-                if pot[i] == *letter.0 {
-                    pot.remove(i);
-                    *letter.1 -= 1;
-                    if *letter.1 < 0 {
-                        return None;
-                    }
-                    break;
-                }
+    // Check if we can consume the required letters from the pot
+    for (ch, count) in counter.iter() {
+        let mut needed = *count;
+        while needed > 0 {
+            if let Some(pos) = pot.iter().position(|c| c == ch) {
+                pot.remove(pos);
+                needed -= 1;
+            } else {
+                // Not enough of this letter in the pot
+                return None;
             }
         }
     }
@@ -345,12 +342,12 @@ impl Anagrams {
 
         let chat_message_text = format!("{} formed {} from the pot!", player_name, new_word);
 
-        self.game_state.chat.push(super::ChatMessage {
-            sender: "System".to_string(),
-            text: chat_message_text,
-            cards: None,
-            message_type: Some("success".to_string()),
-        });
+        // self.game_state.chat.push(super::ChatMessage {
+        //     sender: "System".to_string(),
+        //     text: chat_message_text,
+        //     cards: None,
+        //     message_type: Some("success".to_string()),
+        // });
 
         inner_w.pot = new_pot;
 
@@ -403,12 +400,12 @@ impl Anagrams {
             attacker_name, new_word, victim_name, victim_word
         );
 
-        self.game_state.chat.push(super::ChatMessage {
-            sender: "System".to_string(),
-            text: chat_message_text,
-            cards: None,
-            message_type: Some("success".to_string()),
-        });
+        // self.game_state.chat.push(super::ChatMessage {
+        //     sender: "System".to_string(),
+        //     text: chat_message_text,
+        //     cards: None,
+        //     message_type: Some("success".to_string()),
+        // });
 
         inner_w.pot = new_pot;
         inner_w.players_boards[victim_index]
