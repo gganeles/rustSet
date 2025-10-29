@@ -8,4 +8,6 @@ venv/
 server/venv/
 server/.venv/
 
+.vscode/**
+
 **.zip
