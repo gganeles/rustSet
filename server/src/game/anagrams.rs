@@ -149,10 +149,23 @@ pub struct Anagrams {
 }
 
 #[derive(Debug, Clone)]
+struct LastMove {
+    attacker_id: Uuid,
+    victim_id: Option<Uuid>, // None if word was taken from pot
+    word_taken: String,
+    word_stolen: Option<String>, // None if taken from pot
+    old_pot: Vec<char>,
+}
+
+#[derive(Debug, Clone)]
 struct Inner {
     bag: Bag,
     pot: Vec<char>,
     players_boards: Vec<PlayerBoard>,
+    paused: bool,
+    active_challenge: bool,
+    challenge_votes: HashMap<Uuid, bool>, // true = challenge, false = maintain
+    last_move: Option<LastMove>,
 }
 
 #[derive(Debug, Serialize)]
@@ -274,15 +287,37 @@ impl Anagrams {
             bag,
             pot,
             players_boards: Vec::new(),
+            paused: false,
+            active_challenge: false,
+            challenge_votes: HashMap::new(),
+            last_move: None,
         }));
 
         // spawn a background tile dealer thread that owns a clone of inner and the broadcast tx
         let inner_clone = inner.clone();
         let broadcast_clone = game_state.broadcast_tx.clone();
         std::thread::spawn(move || {
+            // We check pause more often than the deal interval so pausing is responsive.
             let deal_interval = std::time::Duration::from_secs(7);
+            let tick = std::time::Duration::from_millis(200);
+            let mut accumulated = std::time::Duration::ZERO;
             loop {
-                std::thread::sleep(deal_interval);
+                std::thread::sleep(tick);
+
+                // If paused, don't advance accumulated time or deal tiles
+                {
+                    let inner_r = inner_clone.read().unwrap();
+                    if inner_r.paused {
+                        continue;
+                    }
+                }
+
+                accumulated += tick;
+                if accumulated < deal_interval {
+                    continue;
+                }
+                accumulated = std::time::Duration::ZERO;
+
                 let mut inner_w = inner_clone.write().unwrap();
                 if let Some(tile) = inner_w.bag.letters.pop() {
                     inner_w.pot.push(tile);
@@ -310,7 +345,19 @@ impl Anagrams {
 
     // synchronous version of anagram attempt
     fn anagram_attempt(&mut self, word_to_check: String, player_id: Uuid) -> Result<(), &str> {
+        // Don't allow attempts while paused or during a challenge
+        {
+            let inner_r = self.inner.read().unwrap();
+            if inner_r.paused {
+                return Err("Game is paused.");
+            }
+            if inner_r.active_challenge {
+                return Err("Cannot take words during a challenge.");
+            }
+        }
+
         // Validate the attempted word exists in our dictionary (log n lookup via BTreeSet)
+
         if word_to_check.trim().len() < 3 {
             return Err("Word must be at least 3 characters long.");
         }
@@ -391,9 +438,21 @@ impl Anagrams {
         //     message_type: Some("success".to_string()),
         // });
 
+        // Record this move before changing state
+        let old_pot = inner_w.pot.clone();
+
         inner_w.pot = new_pot;
 
         inner_w.players_boards[player_index].add_word(new_word.to_string());
+
+        // Store last move for potential challenge
+        inner_w.last_move = Some(LastMove {
+            attacker_id: *player_id,
+            victim_id: None,
+            word_taken: new_word.to_string(),
+            word_stolen: None,
+            old_pot,
+        });
 
         let completed = AnagramCompletedData {
             game_state: self.game_state.clone(),
@@ -449,12 +508,24 @@ impl Anagrams {
         //     message_type: Some("success".to_string()),
         // });
 
+        // Record this move before changing state
+        let old_pot = inner_w.pot.clone();
+
         inner_w.pot = new_pot;
         inner_w.players_boards[victim_index]
             .words
             .remove(victim_word_index);
 
         inner_w.players_boards[attacker_index].add_word(new_word.to_string());
+
+        // Store last move for potential challenge
+        inner_w.last_move = Some(LastMove {
+            attacker_id: *attacker_id,
+            victim_id: Some(*victim_id),
+            word_taken: new_word.to_string(),
+            word_stolen: Some(victim_word.clone()),
+            old_pot,
+        });
 
         let completed = AnagramCompletedData {
             game_state: self.game_state.clone(),
@@ -469,6 +540,212 @@ impl Anagrams {
         };
         let json = serde_json::to_string(&msg).unwrap();
         let _ = self.game_state.broadcast_tx.send(json);
+    }
+
+    fn broadcast_state(&self, kind: String) {
+        let inner_r = self.inner.read().unwrap();
+        let state_data = GameStateData {
+            game_state: self.game_state.clone(),
+            pot: inner_r.pot.clone(),
+            players_boards: inner_r.players_boards.clone(),
+            chat: self.game_state.chat.clone(),
+        };
+
+        let msg = Message {
+            kind,
+            data: serde_json::to_string(&state_data).unwrap(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let _ = self.game_state.broadcast_tx.send(json);
+    }
+
+    fn start_challenge(&mut self, challenger_id: &Uuid) -> Result<(), &str> {
+        let mut inner_w = self.inner.write().unwrap();
+
+        // Check if there's a move to challenge
+        if inner_w.last_move.is_none() {
+            return Err("No move to challenge.");
+        }
+
+        // Check if already in a challenge
+        if inner_w.active_challenge {
+            return Err("A challenge is already in progress.");
+        }
+
+        // Start the challenge
+        inner_w.active_challenge = true;
+        inner_w.paused = true;
+        inner_w.challenge_votes.clear();
+        inner_w.challenge_votes.insert(*challenger_id, true);
+
+        // Update game state
+        self.game_state.current_state = "challenge".into();
+
+        // Get challenger name
+        let challenger_name = inner_w
+            .players_boards
+            .iter()
+            .find(|pb| pb.player.id == *challenger_id)
+            .map(|pb| pb.player.name.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        drop(inner_w);
+
+        // Broadcast challenge started
+        let chat_msg = super::ChatMessage {
+            sender: "System".to_string(),
+            text: format!("{} has challenged the last move! Type /challenge to agree or /maintain to disagree. Game is paused.", challenger_name),
+            cards: None,
+            message_type: Some("info".to_string()),
+        };
+        self.game_state.chat.push(chat_msg.clone());
+
+        self.broadcast_state("challenge_started".into());
+
+        // Check if challenge can be resolved immediately (e.g., if only one player or threshold already met)
+        self.check_challenge_resolution();
+
+        Ok(())
+    }
+
+    fn vote_challenge(&mut self, player_id: &Uuid, vote: bool) -> Result<(), &str> {
+        let mut inner_w = self.inner.write().unwrap();
+
+        if !inner_w.active_challenge {
+            return Err("No active challenge.");
+        }
+
+        // Record the vote
+        inner_w.challenge_votes.insert(*player_id, vote);
+
+        let player_name = inner_w
+            .players_boards
+            .iter()
+            .find(|pb| pb.player.id == *player_id)
+            .map(|pb| pb.player.name.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        drop(inner_w);
+
+        // Broadcast the vote
+        let vote_text = if vote { "challenge" } else { "maintain" };
+        let chat_msg = super::ChatMessage {
+            sender: "System".to_string(),
+            text: format!("{} voted to {}.", player_name, vote_text),
+            cards: None,
+            message_type: Some("info".to_string()),
+        };
+        self.game_state.chat.push(chat_msg.clone());
+
+        let msg = Message {
+            kind: "chat".into(),
+            data: serde_json::to_string(&chat_msg).unwrap(),
+        };
+        let _ = self
+            .game_state
+            .broadcast_tx
+            .send(serde_json::to_string(&msg).unwrap());
+
+        // Check if challenge can be resolved
+        self.check_challenge_resolution();
+
+        Ok(())
+    }
+
+    fn check_challenge_resolution(&mut self) {
+        let inner_r = self.inner.read().unwrap();
+
+        if !inner_r.active_challenge {
+            return;
+        }
+
+        let total_players = inner_r.players_boards.len();
+        let votes_count = inner_r.challenge_votes.len();
+
+        let challenge_votes = inner_r.challenge_votes.values().filter(|&&v| v).count();
+        let maintain_votes = votes_count - challenge_votes;
+
+        // Calculate thresholds
+        let challenge_threshold = (total_players + 1) / 2; // half rounded up
+        let maintain_threshold = total_players / 2 + 1; // more than half
+
+        drop(inner_r);
+
+        // Resolve if threshold met
+        if challenge_votes >= challenge_threshold {
+            self.resolve_challenge(true);
+        } else if maintain_votes >= maintain_threshold {
+            self.resolve_challenge(false);
+        }
+    }
+
+    fn resolve_challenge(&mut self, challenge_succeeds: bool) {
+        let mut inner_w = self.inner.write().unwrap();
+
+        if !inner_w.active_challenge {
+            return;
+        }
+
+        inner_w.active_challenge = false;
+        inner_w.paused = false;
+        self.game_state.current_state = "in_progress".into();
+
+        if challenge_succeeds {
+            // Revert the last move
+            if let Some(last_move) = inner_w.last_move.take() {
+                // Find attacker board and remove the word they took
+                if let Some(attacker_board) = inner_w
+                    .players_boards
+                    .iter_mut()
+                    .find(|pb| pb.player.id == last_move.attacker_id)
+                {
+                    attacker_board.remove_word(&last_move.word_taken);
+                }
+
+                // If there was a victim, restore their word
+                if let (Some(victim_id), Some(stolen_word)) =
+                    (last_move.victim_id, last_move.word_stolen)
+                {
+                    if let Some(victim_board) = inner_w
+                        .players_boards
+                        .iter_mut()
+                        .find(|pb| pb.player.id == victim_id)
+                    {
+                        victim_board.add_word(stolen_word);
+                    }
+                }
+
+                // Restore the pot
+                inner_w.pot = last_move.old_pot;
+            }
+
+            drop(inner_w);
+
+            let chat_msg = super::ChatMessage {
+                sender: "System".to_string(),
+                text: "Challenge succeeded! The last move has been reverted. Game resumed."
+                    .to_string(),
+                cards: None,
+                message_type: Some("success".to_string()),
+            };
+            self.game_state.chat.push(chat_msg.clone());
+
+            self.broadcast_state("challenge_resolved".into());
+        } else {
+            // Challenge failed, clear last_move
+            inner_w.last_move = None;
+            drop(inner_w);
+
+            let chat_msg = super::ChatMessage {
+                sender: "System".to_string(),
+                text: "Challenge failed! The move stands. Game resumed.".to_string(),
+                cards: None,
+                message_type: Some("info".to_string()),
+            };
+            self.game_state.chat.push(chat_msg.clone());
+
+            self.broadcast_state("challenge_resolved".into());
+        }
     }
 }
 impl super::Game for Anagrams {
@@ -555,6 +832,118 @@ impl super::Game for Anagrams {
                             // Broadcast the updated game state with game_over status
                             let btx = self.game_state.broadcast_tx.clone();
                             self.send_state_to_client(&btx, "game_over".into());
+                        } else if message.trim() == "/pause" {
+                            // Toggle paused state
+                            let mut inner_w = self.inner.write().unwrap();
+                            inner_w.paused = !inner_w.paused;
+                            let paused_now = inner_w.paused;
+                            drop(inner_w);
+
+                            // Update game_state.current_state for clients
+                            self.game_state.current_state = if paused_now {
+                                "paused".into()
+                            } else {
+                                "in_progress".into()
+                            };
+
+                            // Add system chat message announcing pause/resume
+                            let announce = if paused_now {
+                                "Game paused. Letter dealing and word taking are disabled."
+                            } else {
+                                "Game resumed. Letter dealing and word taking are enabled."
+                            };
+
+                            let chat_msg = super::ChatMessage {
+                                sender: "System".to_string(),
+                                text: announce.to_string(),
+                                cards: None,
+                                message_type: Some("info".to_string()),
+                            };
+                            self.game_state.chat.push(chat_msg.clone());
+
+                            // Broadcast the updated game state so clients can reflect paused status
+                            // This includes the chat history, so no need to send chat separately
+                            let btx = self.game_state.broadcast_tx.clone();
+                            let kind = if paused_now { "paused" } else { "resumed" };
+                            self.send_state_to_client(&btx, kind.into());
+                        } else if message.trim() == "/challenge" {
+                            // Find the player ID from sender name
+                            if let Some(player) =
+                                self.game_state.players.iter().find(|p| p.name == sender)
+                            {
+                                let player_id = player.id;
+
+                                // Check if there's already an active challenge
+                                let is_active = {
+                                    let inner_r = self.inner.read().unwrap();
+                                    inner_r.active_challenge
+                                };
+
+                                if is_active {
+                                    // This is a vote for an existing challenge
+                                    if let Err(e) = self.vote_challenge(&player_id, true) {
+                                        let chat_msg = super::ChatMessage {
+                                            sender: "System".to_string(),
+                                            text: e.to_string(),
+                                            cards: None,
+                                            message_type: Some("error".to_string()),
+                                        };
+                                        self.game_state.chat.push(chat_msg.clone());
+                                        let chat = Message {
+                                            kind: "chat".into(),
+                                            data: serde_json::to_string(&chat_msg).unwrap(),
+                                        };
+                                        let _ = self
+                                            .game_state
+                                            .broadcast_tx
+                                            .send(serde_json::to_string(&chat).unwrap());
+                                    }
+                                } else {
+                                    // Start a new challenge
+                                    if let Err(e) = self.start_challenge(&player_id) {
+                                        let chat_msg = super::ChatMessage {
+                                            sender: "System".to_string(),
+                                            text: e.to_string(),
+                                            cards: None,
+                                            message_type: Some("error".to_string()),
+                                        };
+                                        self.game_state.chat.push(chat_msg.clone());
+                                        let chat = Message {
+                                            kind: "chat".into(),
+                                            data: serde_json::to_string(&chat_msg).unwrap(),
+                                        };
+                                        let _ = self
+                                            .game_state
+                                            .broadcast_tx
+                                            .send(serde_json::to_string(&chat).unwrap());
+                                    }
+                                }
+                            }
+                        } else if message.trim() == "/maintain" {
+                            // Find the player ID from sender name
+                            if let Some(player) =
+                                self.game_state.players.iter().find(|p| p.name == sender)
+                            {
+                                let player_id = player.id;
+
+                                if let Err(e) = self.vote_challenge(&player_id, false) {
+                                    let chat_msg = super::ChatMessage {
+                                        sender: "System".to_string(),
+                                        text: e.to_string(),
+                                        cards: None,
+                                        message_type: Some("error".to_string()),
+                                    };
+                                    self.game_state.chat.push(chat_msg.clone());
+                                    let chat = Message {
+                                        kind: "chat".into(),
+                                        data: serde_json::to_string(&chat_msg).unwrap(),
+                                    };
+                                    let _ = self
+                                        .game_state
+                                        .broadcast_tx
+                                        .send(serde_json::to_string(&chat).unwrap());
+                                }
+                            }
                         } else {
                             // Add to chat history (regular messages don't have cards)
                             self.game_state.chat.push(super::ChatMessage {

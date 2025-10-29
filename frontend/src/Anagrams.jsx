@@ -1,5 +1,5 @@
 import { onCleanup, createSignal, For, createEffect, onMount } from 'solid-js'
-import GameOverModal from './GameOverModal'
+import AnagramsGameOverModal from './AnagramsGameOverModal'
 import { navigate } from './utils/test.js'
 
 export default function Anagrams(props) {
@@ -103,7 +103,7 @@ export default function Anagrams(props) {
                 try {
                     const chatData = JSON.parse(data.data)
                     const sender = chatData.sender || 'Player'
-                    const text = chatData.message || data.data
+                    const text = chatData.text || chatData.message || data.data
                     const isSystem = sender === 'System'
                     const messageType = chatData.message_type || 'info'
                     setMessages(prev => [...prev, { sender, text, isSystem, messageType }])
@@ -133,6 +133,31 @@ export default function Anagrams(props) {
                         setShowGameOver(true)
                     }
                 } catch (err) { console.error('Error parsing game_over:', err) }
+            } else if (data.kind === 'challenge_started' || data.kind === 'challenge_resolved' || data.kind === 'paused' || data.kind === 'resumed') {
+                // Handle challenge and pause state changes
+                try {
+                    const gameData = JSON.parse(data.data)
+                    if (gameData.chat && Array.isArray(gameData.chat)) {
+                        const chatMessages = gameData.chat.map(msg => {
+                            const isSystem = msg.sender === 'System'
+                            const messageType = msg.message_type || (isSystem ? 'system' : 'info')
+                            return {
+                                sender: msg.sender,
+                                text: msg.text,
+                                isSystem: isSystem,
+                                messageType: messageType
+                            }
+                        })
+                        setMessages(chatMessages)
+                    }
+                    setGameState(gameData)
+                    // Update challenge state
+                    if (gameData.game_state && gameData.game_state.current_state === 'challenge') {
+                        setIsChallengeActive(true)
+                    } else {
+                        setIsChallengeActive(false)
+                    }
+                } catch (err) { console.error('Error parsing challenge/pause state:', err) }
             } else if (data.kind === 'new_tile') {
                 // server sends the new pot (array of chars) as JSON in data.data
                 try {
@@ -380,8 +405,14 @@ export default function Anagrams(props) {
                 />
             )}
 
-            {showGameOver() && gameState() && gameState().game_state && gameState().game_state.players && (
-                <GameOverModal players={gameState().game_state.players} onClose={() => setShowGameOver(false)} />
+            {showGameOver() && gameState() && (
+                <AnagramsGameOverModal
+                    players_boards={(gameState().players_boards && Array.isArray(gameState().players_boards))
+                        ? gameState().players_boards
+                        : (gameState().game_state && gameState().game_state.players_boards) || []
+                    }
+                    onClose={() => setShowGameOver(false)}
+                />
             )}
         </div>
     )
