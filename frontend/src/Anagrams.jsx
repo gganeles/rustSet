@@ -110,6 +110,29 @@ export default function Anagrams(props) {
                 } catch {
                     setMessages(prev => [...prev, { sender: 'Player', text: data.data, isSystem: false, messageType: 'info' }])
                 }
+            } else if (data.kind === 'game_over') {
+                // Server sent game_over - update state and show modal
+                try {
+                    const gameData = JSON.parse(data.data)
+                    if (gameData.chat && Array.isArray(gameData.chat)) {
+                        const chatMessages = gameData.chat.map(msg => {
+                            const isSystem = msg.sender === 'System'
+                            const messageType = msg.message_type || (isSystem ? 'system' : 'info')
+                            return {
+                                sender: msg.sender,
+                                text: msg.text,
+                                isSystem: isSystem,
+                                messageType: messageType
+                            }
+                        })
+                        setMessages(chatMessages)
+                    }
+                    setGameState(gameData)
+                    // Show the game over modal
+                    if (gameData.game_state && gameData.game_state.current_state === 'game_over') {
+                        setShowGameOver(true)
+                    }
+                } catch (err) { console.error('Error parsing game_over:', err) }
             } else if (data.kind === 'new_tile') {
                 // server sends the new pot (array of chars) as JSON in data.data
                 try {
@@ -155,9 +178,21 @@ export default function Anagrams(props) {
         if (!socket || socket.readyState !== WebSocket.OPEN) return
         const word = input().trim()
         if (!word) return
-        // attempts are shown in chat by the server; no client-side error banner
-        // player id lookup
+        
         const playerName = localStorage.getItem('rs_name') || 'Anonymous'
+        
+        // Check if the message starts with "/" for commands (like /gameover)
+        if (word.startsWith('/')) {
+            // Send as chat message (which will be handled as a command on the server)
+            const chatData = JSON.stringify({ sender: playerName, message: word })
+            const msg = { kind: 'chat', data: chatData }
+            socket.send(JSON.stringify(msg))
+            setInput('')
+            return
+        }
+        
+        // Otherwise, treat as anagram attempt
+        // player id lookup
         let playerId = null
         if (gameState() && gameState().game_state && gameState().game_state.players) {
             const player = gameState().game_state.players.find(p => p.name === playerName)

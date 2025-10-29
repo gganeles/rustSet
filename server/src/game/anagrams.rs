@@ -482,21 +482,54 @@ impl super::Game for Anagrams {
                             .unwrap_or("")
                             .to_string();
 
-                        // Add to chat history (regular messages don't have cards)
-                        self.game_state.chat.push(super::ChatMessage {
-                            sender: sender.clone(),
-                            text: message.clone(),
-                            cards: None,
-                            message_type: None,
-                        });
-                    }
+                        // Check if the message is the /gameover command
+                        if message.trim() == "/gameover" {
+                            // Set game state to game_over
+                            self.game_state.current_state = "game_over".into();
 
-                    let msg = Message {
-                        kind: "chat".into(),
-                        data: data.to_string(),
-                    };
-                    let json = serde_json::to_string(&msg).unwrap();
-                    let _ = self.game_state.broadcast_tx.send(json);
+                            // Add system message to chat
+                            self.game_state.chat.push(super::ChatMessage {
+                                sender: "System".to_string(),
+                                text: "Game Over! Final scores have been calculated.".to_string(),
+                                cards: None,
+                                message_type: Some("info".to_string()),
+                            });
+
+                            // Calculate final scores based on number of words
+                            {
+                                let inner_r = self.inner.read().unwrap();
+                                for player_board in &inner_r.players_boards {
+                                    if let Some(player) = self
+                                        .game_state
+                                        .players
+                                        .iter_mut()
+                                        .find(|p| p.id == player_board.player.id)
+                                    {
+                                        player.score = player_board.words.len() as u32;
+                                    }
+                                }
+                            }
+
+                            // Broadcast the updated game state with game_over status
+                            let btx = self.game_state.broadcast_tx.clone();
+                            self.send_state_to_client(&btx, "game_over".into());
+                        } else {
+                            // Add to chat history (regular messages don't have cards)
+                            self.game_state.chat.push(super::ChatMessage {
+                                sender: sender.clone(),
+                                text: message.clone(),
+                                cards: None,
+                                message_type: None,
+                            });
+
+                            let msg = Message {
+                                kind: "chat".into(),
+                                data: data.to_string(),
+                            };
+                            let json = serde_json::to_string(&msg).unwrap();
+                            let _ = self.game_state.broadcast_tx.send(json);
+                        }
+                    }
                 }
                 "anagram_attempt" => {
                     let data = parsed.get("data");
