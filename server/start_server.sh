@@ -6,5 +6,6 @@ cd "$(dirname "$0")"
 # Activate venv
 source venv/bin/activate
 
+cargo build --release
 # Run the server
-exec ./target/release/server
+./target/release/rust_ws_server
