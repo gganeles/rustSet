@@ -209,7 +209,7 @@ export default function Lobby(props) {
                   onInput={(e) => setGameType(e.target.value)}
                 >
                   <option value="set">Set</option>
-                  <option value="anagrams">Anagram</option>
+                  <option value="anagrams">Anagrams</option>
                 </select>
               </div>
               <button

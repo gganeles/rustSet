@@ -363,8 +363,8 @@ impl Anagrams {
         }
 
         let dict = get_dict();
-        let word_lower = word_to_check.trim().to_lowercase();
-        if !dict.contains(&word_lower) {
+        let word_to_check = word_to_check.trim().to_lowercase();
+        if !dict.contains(&word_to_check) {
             return Err("Word not in dictionary.");
         }
 
@@ -386,7 +386,7 @@ impl Anagrams {
                 if let Some(player_board) = inner_r.players_boards.get(player_i) {
                     for (word_i, existing_word) in player_board.words.iter().enumerate() {
                         if let Some(new_pot) =
-                            some_anagram(existing_word, &word_lower, inner_r.pot.clone())
+                            some_anagram(existing_word, &word_to_check, inner_r.pot.clone())
                         {
                             // capture the necessary data and break out
                             found = Some((new_pot, word_i, player_board.player.id.clone()));

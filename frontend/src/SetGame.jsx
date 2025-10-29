@@ -165,7 +165,7 @@ export default function SetGame(props) {
     }
 
     return (
-        <div class="h-full flex flex-col">
+        <div class="h-screen flex flex-col">
             <div class="flex items-center justify-between px-4 py-2 bg-white border-b shadow-sm flex-shrink-0 flex-wrap gap-4">
                 {gameState() && gameState().game_state && gameState().game_state.players && (<>
                     <h2 class="text-lg font-semibold whitespace-nowrap">{gameState().game_state.name}</h2>

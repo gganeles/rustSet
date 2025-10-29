@@ -34,7 +34,7 @@ export default function App() {
   }
 
   return (
-    <div class="h-screen font-sans">
+    <div class="h-full font-sans">
       {route().name === 'lobby' && <Lobby onJoin={handleJoin} />}
 
       {route().name === 'game' && <Game id={route().id} />}

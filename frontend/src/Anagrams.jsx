@@ -263,14 +263,14 @@ export default function Anagrams(props) {
                             return boards
                                 .filter(pb => pb.player && pb.player.name && pb.player.name !== meName)
                                 .map(pb => (
-                                    <div class="bg-white rounded-lg shadow-sm p-3 md:p-4">
+                                    <div class="bg-white rounded-lg drop-shadow-sm p-3 md:p-4">
                                         <div class="text-xs md:text-sm text-gray-600 mb-2">{pb.player.name}</div>
-                                        <div class="flex flex-wrap gap-4 md:gap-6">
+                                        <div class="flex flex-wrap gap-2 md:gap-6">
                                             {pb.words && pb.words.length > 0 ? (
                                                 pb.words.map((word, wordIdx) => (
-                                                    <div key={wordIdx} class="flex gap-0.5 md:gap-1">
+                                                    <div key={wordIdx} class="flex md:gap-1">
                                                         {word.split('').map((ch, charIdx) => (
-                                                            <div key={charIdx} class="w-5 h-5 md:w-6 md:h-6 bg-orange-100 rounded-sm border-2 border-orange-200 shadow-md flex items-center justify-center text-sm md:text-lg font-bold">{ch}</div>
+                                                            <div key={charIdx} class="w-5 h-5 md:w-6 md:h-6 bg-orange-100 rounded-sm border-2 md:border-2 border-orange-200 shadow-md flex items-center justify-center text-sm md:text-lg font-semibold">{ch}</div>
                                                         ))}
                                                     </div>
                                                 ))
@@ -285,17 +285,17 @@ export default function Anagrams(props) {
 
                     {/* Pot */}
                     <div class="flex justify-center mb-4 md:mb-10">
-                        <div class="flex flex-wrap gap-1.5 md:gap-3 justify-center">
+                        <div class="flex flex-wrap gap-1 md:gap-3 justify-center">
                             {(gameState() && gameState().pot) ? gameState().pot.map((ch) => (
-                                <div class="w-8 h-8 md:w-12 md:h-12 bg-orange-100 rounded-lg border-2 border-orange-200 shadow-md flex items-center justify-center text-lg md:text-2xl font-bold">{ch}</div>
+                                <div class="w-6 h-6 md:w-12 md:h-12 bg-orange-100 rounded-sm md:rounded-lg border-2 border-orange-200 shadow-md flex items-center justify-center text-lg md:text-2xl font-bold">{ch}</div>
                             )) : <div class="text-gray-500 text-sm">(empty)</div>}
                         </div>
                     </div>
 
                     {/* Player Board */}
                     <div class="w-full mb-4 md:mb-6">
-                        <div class="bg-white rounded-lg shadow-sm p-3 md:p-4 min-h-[80px] md:min-h-[120px]">
-                            <div class="flex flex-wrap gap-4 md:gap-8">
+                        <div class="bg-white rounded-lg drop-shadow-sm p-2 md:p-4 md:min-h-[120px]">
+                            <div class="flex flex-wrap gap-2 md:gap-8">
                                 {(() => {
                                     const boards = (gameState() && gameState().players_boards) ? gameState().players_boards : []
                                     const meName = localStorage.getItem('rs_name') || ''
@@ -303,9 +303,9 @@ export default function Anagrams(props) {
                                     if (!myBoard || !myBoard.words || myBoard.words.length === 0) return <div class="text-gray-500 text-sm">(no words)</div>
                                     // render each word as its own div with tiles inside
                                     return myBoard.words.map((word, wordIdx) => (
-                                        <div key={wordIdx} class="flex gap-0.5">
+                                        <div key={wordIdx} class="flex md:gap-1">
                                             {word.split('').map((ch, charIdx) => (
-                                                <div key={charIdx} class="w-5 h-5 md:w-6 md:h-6 bg-orange-100 rounded-sm border-2 border-orange-200 shadow-md flex items-center justify-center text-sm md:text-lg font-bold">{ch}</div>
+                                                <div key={charIdx} class="w-5 h-5 md:w-6 md:h-6 bg-orange-100 rounded-sm border-1 md:border-2 border-orange-200 shadow-md flex items-center justify-center text-sm md:text-lg font-bold">{ch}</div>
                                             ))}
                                         </div>
                                     ))
