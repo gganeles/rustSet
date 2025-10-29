@@ -178,9 +178,9 @@ export default function Anagrams(props) {
         if (!socket || socket.readyState !== WebSocket.OPEN) return
         const word = input().trim()
         if (!word) return
-        
+
         const playerName = localStorage.getItem('rs_name') || 'Anonymous'
-        
+
         // Check if the message starts with "/" for commands (like /gameover)
         if (word.startsWith('/')) {
             // Send as chat message (which will be handled as a command on the server)
@@ -190,7 +190,7 @@ export default function Anagrams(props) {
             setInput('')
             return
         }
-        
+
         // Otherwise, treat as anagram attempt
         // player id lookup
         let playerId = null
