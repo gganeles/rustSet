@@ -1,7 +1,7 @@
 // Game trait is synchronous to keep implementations simple and avoid requiring async_trait
 use serde::Serialize;
 use std::sync::Arc;
-use tokio::{self, sync::broadcast};
+use tokio;
 use uuid::Uuid;
 
 pub mod anagrams;

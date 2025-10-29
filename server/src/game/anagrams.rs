@@ -1,9 +1,5 @@
-use crate::{
-    game::{player::Player, GameState},
-    user::User,
-};
+use crate::game::{player::Player, GameState};
 use lazy_static::lazy_static;
-use nlprule::{tokenizer_filename, Tokenizer};
 use std::sync::RwLock;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -38,35 +34,81 @@ lazy_static! {
         Arc::new(set)
     };
 
-    // Lemmatizer for word comparison
-    static ref LEMMATIZER: Tokenizer = {
-        let mut tokenizer_bytes: &'static [u8] =
-            include_bytes!(concat!(env!("OUT_DIR"), "/", tokenizer_filename!("en")));
-        Tokenizer::from_reader(&mut tokenizer_bytes).expect("tokenizer binary is valid")
-    };
+
 }
 
-fn are_lemmas_equal(word1: &str, word2: &str) -> bool {
-    let lemmatizer = LEMMATIZER.tagger();
+use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
+use pyo3::types::PyDict;
 
-    let lemmas1: Vec<String> = lemmatizer
-        .get_tags(word1)
-        .map(|t| t.lemma().as_str().to_owned())
-        .collect();
+static NLP: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
 
-    let lemmas2: Vec<String> = lemmatizer
-        .get_tags(word2)
-        .map(|t| t.lemma().as_str().to_owned())
-        .collect();
-
-    for lemma1 in &lemmas1 {
-        for lemma2 in &lemmas2 {
-            if lemma1 == lemma2 {
-                return true;
+/// Initialize the spaCy model once. Returns true on success.
+pub fn init_lemmatizer() -> bool {
+    Python::attach(|py| {
+        // Add venv site-packages to sys.path if we're running from a venv
+        if let Ok(sys) = py.import("sys") {
+            if let Ok(path) = sys.getattr("path") {
+                // Try to import from venv
+                let venv_paths = vec![
+                    "./venv/lib/python3.11/site-packages",
+                    "./venv/lib/python3.10/site-packages",
+                    "./venv/lib/python3.12/site-packages",
+                    "venv/lib/python3.11/site-packages",
+                    "venv/lib/python3.10/site-packages",
+                    "venv/lib/python3.12/site-packages",
+                ];
+                for venv_path in venv_paths {
+                    let _ = path.call_method1("insert", (0, venv_path));
+                }
             }
         }
-    }
-    false
+
+        let spacy = match py.import("spacy") {
+            Ok(m) => m,
+            Err(_) => return false,
+        };
+        let kwargs = PyDict::new(py);
+        // exclude heavy pipeline components not needed
+        if kwargs.set_item("exclude", vec!["parser", "ner"]).is_err() {
+            return false;
+        }
+        let nlp_obj = match spacy.call_method("load", ("en_core_web_sm",), Some(&kwargs)) {
+            Ok(o) => o,
+            Err(_) => return false,
+        };
+        NLP.set(py, nlp_obj.unbind()).is_ok()
+    })
+}
+
+/// Returns true if the lemmas of word1 and word2 are equal; false on error.
+pub fn are_lemmas_equal(word1: &str, word2: &str) -> bool {
+    Python::attach(|py| {
+        if NLP.get(py).is_none() {
+            if !init_lemmatizer() {
+                return false;
+            }
+        }
+
+        let nlp_ref = match NLP.get(py) {
+            Some(n) => n,
+            None => return false,
+        };
+        let nlp = nlp_ref.bind(py);
+
+        // helper to get lemma of first token (convert to lowercase for consistency)
+        let get_lemma = |w: &str| -> Option<String> {
+            let lowercase_w = w.to_lowercase();
+            let doc = nlp.call_method1("__call__", (lowercase_w.as_str(),)).ok()?;
+            let tok0 = doc.get_item(0).ok()?;
+            tok0.getattr("lemma_").ok()?.extract::<String>().ok()
+        };
+
+        match (get_lemma(word1), get_lemma(word2)) {
+            (Some(l1), Some(l2)) => l1 == l2,
+            _ => false,
+        }
+    })
 }
 
 fn get_dict() -> Arc<BTreeSet<String>> {
@@ -143,7 +185,7 @@ impl Bag {
             .chars()
             .for_each(|x| letters.push(x));
         // use a thread-local RNG for shuffling
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         letters.shuffle(&mut rng);
         Bag { letters }
     }
@@ -172,7 +214,7 @@ fn pot_anagram(word_to_check: &str, mut pot: Vec<char>) -> Option<Vec<char>> {
 
 fn some_anagram(existing_word: &str, word_to_check: &str, mut pot: Vec<char>) -> Option<Vec<char>> {
     let mut counter: HashMap<char, i8> = HashMap::new();
-    if (word_to_check.len() <= existing_word.len()) {
+    if word_to_check.len() <= existing_word.len() {
         return None;
     }
 
@@ -340,7 +382,7 @@ impl Anagrams {
 
         let player_name = inner_w.players_boards[player_index].player.name.clone();
 
-        let chat_message_text = format!("{} formed {} from the pot!", player_name, new_word);
+        let _chat_message_text = format!("{} formed {} from the pot!", player_name, new_word);
 
         // self.game_state.chat.push(super::ChatMessage {
         //     sender: "System".to_string(),
@@ -395,7 +437,7 @@ impl Anagrams {
         let victim_name = inner_w.players_boards[victim_index].player.name.clone();
         let victim_word = inner_w.players_boards[victim_index].words[victim_word_index].clone();
 
-        let chat_message_text = format!(
+        let _chat_message_text = format!(
             "{} took {} from {}'s {}!",
             attacker_name, new_word, victim_name, victim_word
         );

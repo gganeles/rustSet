@@ -2,7 +2,7 @@ use crate::{game::GameState, user::User};
 use std::sync::Arc;
 
 use super::Uuid;
-use rand::{rand_core::le, seq::SliceRandom};
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::router::Message;

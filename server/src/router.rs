@@ -1,5 +1,5 @@
 use crate::game;
-use game::{set, Game, GameList};
+use game::{Game, GameList};
 
 use crate::user::User;
 use futures::{future, SinkExt, StreamExt};
@@ -158,7 +158,7 @@ async fn client_game_connection(
                     kind: "game_message_backup".into(),
                     data: txt.clone(),
                 };
-                let json = serde_json::to_string(&msg).unwrap();
+                let _json = serde_json::to_string(&msg).unwrap();
                 if ws_tx.send(warp::ws::Message::text(txt)).await.is_err() {
                     break;
                 }
