@@ -4,11 +4,19 @@ use game::{Game, GameList};
 use crate::user::User;
 use futures::{future, SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::convert::Infallible;
-use std::sync::{Arc, RwLock};
+
+use lazy_static::lazy_static;
+use std::{
+    collections::BTreeSet,
+    convert::Infallible,
+    io::BufRead,
+    sync::{Arc, RwLock},
+};
 use tokio::sync::broadcast::{self, Sender};
 use uuid::Uuid;
 use warp::Filter;
+
+use rand::seq::IndexedRandom;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
@@ -167,6 +175,25 @@ async fn client_game_connection(
     }
 }
 
+lazy_static! {
+    static ref ADJECTIVE_LIST: Arc<Vec<String>> = {
+        let mut vec: Vec<String> = Vec::with_capacity(2000);
+        // Build path relative to this crate
+        let path = format!("{}/src/game/english-adjectives.txt", env!("CARGO_MANIFEST_DIR"));
+        if let Ok(f) = std::fs::File::open(&path) {
+            let reader = std::io::BufReader::new(f);
+            for line in reader.lines().flatten() {
+                let word = line.trim().to_lowercase();
+                if word.is_empty() {
+                    continue;
+                }
+                vec.push(word);
+            }
+        }
+        Arc::new(vec)
+    };
+}
+
 async fn client_lobby_connection(
     ws: warp::ws::WebSocket,
     tx: Arc<Sender<String>>,
@@ -202,26 +229,41 @@ async fn client_lobby_connection(
                             // data should be a JSON object with name and creator
                             #[derive(serde::Deserialize)]
                             struct CreatePayload {
-                                name: String,
                                 creator: String,
                                 game_type: String,
                             }
-
                             if let Ok(payload) = serde_json::from_str::<CreatePayload>(&parsed.data)
                             {
+                                fn capitalize_first(s: &str) -> String {
+                                    let mut chars = s.chars();
+                                    match chars.next() {
+                                        None => String::new(),
+                                        Some(first) => {
+                                            first.to_uppercase().collect::<String>()
+                                                + chars.as_str()
+                                        }
+                                    }
+                                }
                                 // create game and add to list (write lock)
                                 let creator = User::new(payload.creator.clone());
+                                let mut rng = rand::rng();
+                                let name = format!(
+                                    "{}'s {} {} Game",
+                                    payload.creator.clone(),
+                                    capitalize_first(
+                                        ADJECTIVE_LIST
+                                            .choose(&mut rng)
+                                            .unwrap_or(&"normal".to_string())
+                                    ),
+                                    capitalize_first(&payload.game_type)
+                                );
 
                                 let new_game: Box<dyn Game>;
                                 match &payload.game_type[..] {
                                     "anagrams" => {
-                                        new_game =
-                                            Box::new(game::anagrams::Anagrams::new(payload.name))
+                                        new_game = Box::new(game::anagrams::Anagrams::new(name))
                                     }
-                                    _ => {
-                                        new_game =
-                                            Box::new(game::set::Set::new(payload.name, creator))
-                                    }
+                                    _ => new_game = Box::new(game::set::Set::new(name, creator)),
                                 }
                                 let game_id = new_game.copy_details().id;
                                 {
