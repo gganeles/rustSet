@@ -42,6 +42,7 @@ RUN pip3 install --no-cache-dir spacy && \
 # Copy the compiled binary from builder
 COPY --from=builder /app/target/release/rust_ws_server /app/rust_ws_server
 
+ENV RUSTSET_ADDR=0.0.0.0:3030
 EXPOSE 3030
 USER 65532:65532
 CMD ["/app/rust_ws_server"]

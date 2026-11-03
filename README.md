@@ -89,7 +89,16 @@ cargo run
 
 The server will start on `ws://127.0.0.1:3030/ws`
 
-#### Option 2: Docker
+#### Option 2: Linux Server (no Docker)
+
+```bash
+sudo sh linux/install.sh
+```
+
+Builds the server, sets up Python and spaCy, and runs it as the `rustset` systemd service on
+`127.0.0.1:3030`. See [server/README.md](server/README.md#linux-server-without-docker).
+
+#### Option 3: Docker
 
 ```bash
 # From repository root
