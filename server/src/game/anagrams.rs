@@ -1,9 +1,9 @@
 use crate::game::{player::Player, GameState};
 use lazy_static::lazy_static;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use std::{
     collections::{BTreeSet, HashMap},
-    io::BufRead,
     sync::Arc,
 };
 
@@ -19,17 +19,13 @@ lazy_static! {
     // Dictionary for anagrams (log(n) lookups)
     static ref DICT: Arc<BTreeSet<String>> = {
         let mut set: BTreeSet<String> = BTreeSet::new();
-        // Build path relative to this crate
-        let path = format!("{}/src/game/words.txt", env!("CARGO_MANIFEST_DIR"));
-        if let Ok(f) = std::fs::File::open(&path) {
-            let reader = std::io::BufReader::new(f);
-            for line in reader.lines().flatten() {
-                let word = line.trim().to_lowercase();
-                if word.is_empty() {
-                    continue;
-                }
-                set.insert(word);
+        // Compiled into the binary so it runs from anywhere
+        for line in include_str!("words.txt").lines() {
+            let word = line.trim().to_lowercase();
+            if word.is_empty() {
+                continue;
             }
+            set.insert(word);
         }
         Arc::new(set)
     };
@@ -43,30 +39,48 @@ use pyo3::types::PyDict;
 
 static NLP: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
 
+static LEMMATIZER_ERROR_SHOWN: AtomicBool = AtomicBool::new(false);
+
+/// init_lemmatizer is retried on every lemma check while spaCy is missing, so
+/// only print the first failure.
+fn report_lemmatizer_error(msg: String) {
+    if !LEMMATIZER_ERROR_SHOWN.swap(true, Ordering::Relaxed) {
+        eprintln!("{msg}");
+    }
+}
+
+/// The embedded interpreter doesn't know about virtualenvs, so put the venv's
+/// site-packages first on sys.path. The venv is $VIRTUAL_ENV (set by `source
+/// venv/bin/activate` or the systemd unit), or ./venv when that isn't set.
+/// It must be built from the same Python version PyO3 links against.
+fn add_venv_to_sys_path(py: Python<'_>) -> PyResult<()> {
+    let venv = std::env::var("VIRTUAL_ENV").unwrap_or_else(|_| "venv".to_string());
+    let sys = py.import("sys")?;
+    let version = sys.getattr("version_info")?;
+    let major: u8 = version.getattr("major")?.extract()?;
+    let minor: u8 = version.getattr("minor")?.extract()?;
+    let site_packages = format!("{venv}/lib/python{major}.{minor}/site-packages");
+    if !std::path::Path::new(&site_packages).is_dir() {
+        report_lemmatizer_error(format!("No Python {major}.{minor} venv at {site_packages}"));
+        return Ok(());
+    }
+    sys.getattr("path")?.call_method1("insert", (0, site_packages))?;
+    Ok(())
+}
+
 /// Initialize the spaCy model once. Returns true on success.
 pub fn init_lemmatizer() -> bool {
     Python::attach(|py| {
-        // Add venv site-packages to sys.path if we're running from a venv
-        if let Ok(sys) = py.import("sys") {
-            if let Ok(path) = sys.getattr("path") {
-                // Try to import from venv
-                let venv_paths = vec![
-                    "./venv/lib/python3.11/site-packages",
-                    "./venv/lib/python3.10/site-packages",
-                    "./venv/lib/python3.12/site-packages",
-                    "venv/lib/python3.11/site-packages",
-                    "venv/lib/python3.10/site-packages",
-                    "venv/lib/python3.12/site-packages",
-                ];
-                for venv_path in venv_paths {
-                    let _ = path.call_method1("insert", (0, venv_path));
-                }
-            }
+        if let Err(e) = add_venv_to_sys_path(py) {
+            report_lemmatizer_error(format!("Could not add the Python venv to sys.path: {e}"));
         }
 
         let spacy = match py.import("spacy") {
             Ok(m) => m,
-            Err(_) => return false,
+            Err(e) => {
+                report_lemmatizer_error(format!("Could not import spaCy: {e}"));
+                return false;
+            }
         };
         let kwargs = PyDict::new(py);
         // exclude heavy pipeline components not needed
@@ -75,7 +89,10 @@ pub fn init_lemmatizer() -> bool {
         }
         let nlp_obj = match spacy.call_method("load", ("en_core_web_sm",), Some(&kwargs)) {
             Ok(o) => o,
-            Err(_) => return false,
+            Err(e) => {
+                report_lemmatizer_error(format!("Could not load en_core_web_sm: {e}"));
+                return false;
+            }
         };
         NLP.set(py, nlp_obj.unbind()).is_ok()
     })

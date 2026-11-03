@@ -9,7 +9,6 @@ use lazy_static::lazy_static;
 use std::{
     collections::BTreeSet,
     convert::Infallible,
-    io::BufRead,
     sync::{Arc, RwLock},
 };
 use tokio::sync::broadcast::{self, Sender};
@@ -178,17 +177,13 @@ async fn client_game_connection(
 lazy_static! {
     static ref ADJECTIVE_LIST: Arc<Vec<String>> = {
         let mut vec: Vec<String> = Vec::with_capacity(2000);
-        // Build path relative to this crate
-        let path = format!("{}/src/game/english-adjectives.txt", env!("CARGO_MANIFEST_DIR"));
-        if let Ok(f) = std::fs::File::open(&path) {
-            let reader = std::io::BufReader::new(f);
-            for line in reader.lines().flatten() {
-                let word = line.trim().to_lowercase();
-                if word.is_empty() {
-                    continue;
-                }
-                vec.push(word);
+        // Compiled into the binary so it runs from anywhere
+        for line in include_str!("game/english-adjectives.txt").lines() {
+            let word = line.trim().to_lowercase();
+            if word.is_empty() {
+                continue;
             }
+            vec.push(word);
         }
         Arc::new(vec)
     };
